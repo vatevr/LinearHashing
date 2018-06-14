@@ -7,7 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 
-template <typename Key, size_t N = 7>
+template <typename Key, size_t N = 3>
 class ADS_set {
 public:
     class Iterator;
@@ -24,7 +24,7 @@ public:
 
 private:
     enum class Mode{ free, used };
-    static const size_t OVERFLOW_BUCKET_SIZE = N / 2 ? N / 2 : N / 2 + 1;
+    static const size_t OVERFLOW_BUCKET_SIZE = N;
 
     struct OverflowBucket {
         Key* overflowElements = new Key[OVERFLOW_BUCKET_SIZE]();
@@ -39,6 +39,20 @@ private:
 
         ~OverflowBucket() {
             if (nextOverflow) delete nextOverflow;
+        }
+
+        void dump(std::ostream &o) {
+            for (size_type j{0}; j < N; ++j) {
+                switch (overflowMode[j]) {
+                    case Mode::used:
+                        o << overflowElements[j];
+                        break;
+                    case Mode::free:
+                        o << "-";
+                        break;
+                }
+                o << " ";
+            }
         }
     };
 
@@ -65,6 +79,11 @@ private:
                 }
                 o << " ";
             }
+
+            if (overflowBucket) {
+                o << "--------> ";
+                overflowBucket->dump(o);
+            }
         }
 
         ~Bucket() {
@@ -72,9 +91,10 @@ private:
         }
     };
 
-    size_type tableSize{0};
-    size_type d{1};
+    size_type bucketsSize;
+    size_type d{3};
     size_type nextToSplit{0};
+    size_type tableSize{0};
 
     Bucket* table {nullptr};
     // 70% is optimal value
@@ -101,17 +121,17 @@ private:
     void split();
     void addToOverflow(Key, OverflowBucket*);
 
-    Bucket *insertKey(const key_type &key);
 public:
     ADS_set() {
-        table = new Bucket[tableSize];
+        bucketsSize = pow(2, d);
+        table = new Bucket[bucketsSize];
     }
 
     ADS_set(std::initializer_list<key_type> ilist): ADS_set{} { insert(ilist); };
     template<typename InputIt> ADS_set(InputIt first, InputIt last): ADS_set{} { insert(first, last); }
     ADS_set(const ADS_set&) { throw std::runtime_error("Not implemented!"); }
     ~ADS_set() {
-        for(size_t i = 0; i < tableSize; ++i) {
+        for(size_t i = 0; i < bucketsSize; ++i) {
             if(table[i].overflowBucket) { destructOverflow(i); }
         }
 
@@ -143,6 +163,7 @@ public:
     const_iterator end() const { throw std::runtime_error("Not implemented!"); };
 
     void dump(std::ostream& o = std::cerr) const;
+    Bucket *insertKey(const key_type &key);
 
     friend bool operator==(const ADS_set& , const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
     friend bool operator!=(const ADS_set& , const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
@@ -203,6 +224,7 @@ typename ADS_set<Key,N>::Bucket *ADS_set<Key, N>::insertKey(const key_type &key)
         }
     }
 
+    tableSize++;
     return table + index;
 }
 
@@ -212,7 +234,7 @@ void ADS_set<Key, N>::split() {
     std::copy(table, table + size(), tmp);
     delete[] table;
     table = tmp;
-    ++tableSize;
+    ++bucketsSize;
 }
 
 template <typename Key, size_t N>
@@ -221,9 +243,9 @@ void ADS_set<Key, N>::rehash(size_type index) {
     for (size_t i = 0; i < N; ++i) {
         if (hashIndex(table[index].bucketElements[i]) != nextIndex(table[index].bucketElements[i]) && table[index].bucketMode[i] == Mode::used) {
             for (size_type j = 0; j < N && !rehashed; ++j) {
-                if (table[tableSize - 1].bucketMode[j] == Mode::free) {
-                    table[tableSize - 1].bucketElements[j] = table[index].bucketElements[i];
-                    table[tableSize - 1].bucketMode[j] = Mode::used;
+                if (table[bucketsSize - 1].bucketMode[j] == Mode::free) {
+                    table[bucketsSize - 1].bucketElements[j] = table[index].bucketElements[i];
+                    table[bucketsSize - 1].bucketMode[j] = Mode::used;
                     table[index].bucketMode[i] = Mode::free;
 
                     rehashed = true;
@@ -246,20 +268,20 @@ void ADS_set<Key, N>::rehashOverflow(OverflowBucket* overFlowBucket) {
     while(i < (OVERFLOW_BUCKET_SIZE)){
         if(hashIndex(overFlowBucket->overflowElements[i]) != nextIndex(overFlowBucket->overflowElements[i]) && overFlowBucket->overflowMode[i] == Mode::used){
             for(size_t j=0; j < N && !rehashed; ++j){
-                if(table[tableSize - 1].bucketMode[j] == Mode::free){
-                    table[tableSize - 1].bucketElements[j] = overFlowBucket->overflowElements[i];
-                    table[tableSize - 1].bucketMode[j] = Mode::used;
+                if(table[bucketsSize - 1].bucketMode[j] == Mode::free){
+                    table[bucketsSize - 1].bucketElements[j] = overFlowBucket->overflowElements[i];
+                    table[bucketsSize - 1].bucketMode[j] = Mode::used;
 
                     overFlowBucket->overflowMode[i] = Mode::free;
                     rehashed = true;
-                } else if(j == N - 1 && table[tableSize - 1].overflowBucket == nullptr){
-                    table[tableSize-1].overflowBucket = new OverflowBucket();
-                    addToOverflow(overFlowBucket->overflowElements[i], table[tableSize - 1].overflowBucket);
+                } else if(j == N - 1 && table[bucketsSize - 1].overflowBucket == nullptr){
+                    table[bucketsSize-1].overflowBucket = new OverflowBucket();
+                    addToOverflow(overFlowBucket->overflowElements[i], table[bucketsSize - 1].overflowBucket);
 
                     overFlowBucket->overflowMode[i] = Mode::free;
                     rehashed = true;
-                }else if(j == N-1 && table[tableSize - 1].overflowBucket != nullptr){
-                    addToOverflow(overFlowBucket->overflowElements[i], table[tableSize-1].overflowBucket);
+                }else if(j == N-1 && table[bucketsSize - 1].overflowBucket != nullptr){
+                    addToOverflow(overFlowBucket->overflowElements[i], table[bucketsSize-1].overflowBucket);
 
                     overFlowBucket->overflowMode[i] = Mode::free;
                     rehashed = true;
