@@ -1,0 +1,12 @@
+# compiled output
+# compiled output
+/cmake-build-debug
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace

@@ -1,4 +1,0 @@
-"/Users/sevazgest/Library/Application Support/JetBrains/Toolbox/apps/CLion/ch-0/182.2949.5/CLion 2018.2 EAP.app/Contents/bin/cmake/mac/bin/cmake" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/Library/Developer/CommandLineTools/usr/bin/g++ -G "CodeBlocks - Unix Makefiles" /Users/sevazgest/Development/uni/ADS/LinearHashing
--- Configuring done
--- Generating done
--- Build files have been written to: /Users/sevazgest/Development/uni/ADS/LinearHashing/cmake-build-debug
