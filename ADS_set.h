@@ -169,12 +169,12 @@ private:
 
     bucketIterator bucketBegin()
     {
-        return bucketIterator{this, 0};
+        return bucketIterator(this, 0);
     }
 
     bucketIterator bucketEnd()
     {
-        return bucketIterator{this, -1};
+        return bucketIterator(this, -1);
     }
 
     size_type bucketsSize;

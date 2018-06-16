@@ -5,7 +5,7 @@
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
           <entry key="cpp" value="157" />
-          <entry key="h" value="1517" />
+          <entry key="h" value="1521" />
           <entry key="mm" value="10" />
           <entry key="txt" value="12" />
         </counts>
@@ -13,7 +13,7 @@
       <usages-collector id="statistics.file.types.edit">
         <counts>
           <entry key="CMakeLists.txt" value="12" />
-          <entry key="ObjectiveC" value="1684" />
+          <entry key="ObjectiveC" value="1688" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
