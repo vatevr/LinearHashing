@@ -91,6 +91,92 @@ private:
         }
     };
 
+    friend class PrivateBucketIterator;
+
+    template <typename Key, size_t N = 3>
+    class PrivateBucketIterator {
+    private:
+        ADS_set<Key, N>* hashTable_;
+        size_t index_;
+
+    public:
+        using value_type = Bucket;
+        using difference_type = std::ptrdiff_t;
+        using reference = const value_type&;
+        using pointer = const value_type*;
+        using iterator_category = std::forward_iterator_tag;
+
+
+        PrivateBucketIterator(ADS_set<Key, N>* hashTable, size_t index)
+        : hashTable_(hashTable), index_(index)
+        {
+
+        }
+
+        PrivateBucketIterator(const PrivateBucketIterator<Key, N>& other)
+                : PrivateBucketIterator(other.hashTable_, other.index_)
+        {
+
+        }
+
+        reference operator*() const
+        {
+            if(index_ == -1)
+                throw std::runtime_error("Table array exceeded");
+
+            return *hashTable_[index_];
+        };
+
+        pointer operator->() const
+        {
+            if(index_ == -1)
+                throw std::runtime_error("Table array exceeded");
+
+            return &hashTable_[index_];
+        };
+
+        PrivateBucketIterator& operator++()
+        {
+            if(index_ == -1)
+                throw std::runtime_error("Table array exceeded");
+
+            if(++index_ == N)
+                index_ = -1;
+
+            return *this;
+        };
+
+        PrivateBucketIterator operator++(int)
+        {
+            PrivateBucketIterator other {*this};
+            ++(*this);
+            return other;
+        };
+
+        friend bool operator==(const PrivateBucketIterator& me, const PrivateBucketIterator& other)
+        {
+            return me.hashTable_ == other.hashTable_
+                    && me.index_ == other.index_;
+        };
+
+        friend bool operator!=(const PrivateBucketIterator& me, const PrivateBucketIterator& other)
+        {
+            return !(me == other);
+        };
+    };
+
+    using bucketIterator = PrivateBucketIterator<Key, N>;
+
+    bucketIterator bucketBegin()
+    {
+        return bucketIterator{this, 0};
+    }
+
+    bucketIterator bucketEnd()
+    {
+        return bucketIterator{this, -1};
+    }
+
     size_type bucketsSize;
     size_type d{3};
     size_type nextToSplit{0};
@@ -171,17 +257,32 @@ public:
 
 template <typename Key, size_t N>
 class ADS_set<Key,N>::Iterator {
+    ADS_set<Key, N>::Bucket* position_;
+    ADS_set<Key, N>::OverflowBucket* overflowBucket_;
+    size_t index_;
+    // size of table
+    size_t bucketCount_;
+
+    void advanceToUsed() {
+
+    }
 public:
     using value_type = Key;
     using difference_type = std::ptrdiff_t;
     using reference = const value_type&;
     using pointer = const value_type*;
     using iterator_category = std::forward_iterator_tag;
+    using BucketMode = ADS_set<Key, N>::Mode;
+    using Bucket = ADS_set<Key, N>::Bucket;
 
-    explicit Iterator(/* implementation-dependent */) { throw std::runtime_error("Not implemented!"); };
+    explicit Iterator(size_t bucketCount, size_t index, Bucket* position)
+    :position_{position}, index_{index}, bucketCount_{bucketCount}
+    {
+
+    };
     reference operator*() const { throw std::runtime_error("Not implemented!"); };
     pointer operator->() const { throw std::runtime_error("Not implemented!"); };
-    Iterator& operator++() { throw std::runtime_error("Not implemented!"); };
+    Iterator& operator++() {  };
     Iterator operator++(int) { throw std::runtime_error("Not implemented!"); };
     friend bool operator==(const Iterator& , const Iterator& ) { throw std::runtime_error("Not implemented!"); };
     friend bool operator!=(const Iterator& , const Iterator& ) { throw std::runtime_error("Not implemented!"); };

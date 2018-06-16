@@ -6,21 +6,9 @@
 
 #IncludeRegexTransform: 
 
-/Users/sevazgest/Development/uni/ADS/LinearHashing/ADS_set.h
-functional
--
-algorithm
--
-cmath
--
-iostream
--
-stdexcept
--
-
 /Users/sevazgest/Development/uni/ADS/LinearHashing/main.cpp
 iostream
 -
-ADS_set.h
-/Users/sevazgest/Development/uni/ADS/LinearHashing/ADS_set.h
+unordered_map
+-
 

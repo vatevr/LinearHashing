@@ -19,10 +19,8 @@
       <change beforePath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/depend.internal" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/depend.internal" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/depend.make" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/depend.make" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/main.cpp.o" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/LinearHashing.dir/main.cpp.o" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/Progress/1" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake-build-debug/CMakeFiles/Progress/count.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cmake-build-debug/LinearHashing" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/LinearHashing" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/main.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/simpletest" beforeDir="false" />
     </list>
     <ignored path="$PROJECT_DIR$/cmake-build-debug/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -37,12 +35,21 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ADS_set.h">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="157">
-              <caret line="157" column="50" selection-start-line="157" selection-start-column="43" selection-end-line="157" selection-end-column="50" />
+            <state relative-caret-position="692">
+              <caret line="176" selection-start-line="176" selection-end-line="177" />
               <folding>
+                <element signature="e#37#58#0" expanded="true" />
                 <element signature="e#148#176#0" expanded="true" />
-                <element signature="e#4677#4695#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/simpletest.cpp">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="3388">
+              <caret line="154" column="38" selection-start-line="154" selection-start-column="38" selection-end-line="154" selection-end-column="38" />
             </state>
           </provider>
         </entry>
@@ -50,20 +57,22 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/main.cpp">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="132">
-              <caret line="6" column="8" selection-start-line="6" selection-start-column="8" selection-end-line="6" selection-end-column="8" />
-              <folding>
-                <element signature="e#0#19#0" expanded="true" />
-              </folding>
+            <state relative-caret-position="484">
+              <caret line="22" column="20" selection-start-line="22" selection-start-column="20" selection-end-line="22" selection-end-column="20" />
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/CMakeLists.txt">
+        <entry file="file:///Library/Developer/CommandLineTools/usr/include/c++/v1/__hash_table">
           <provider selected="true" editor-type-id="text-editor">
-            <state>
-              <caret line="5" column="31" selection-start-line="5" selection-start-column="31" selection-end-line="5" selection-end-column="31" />
+            <state relative-caret-position="2948">
+              <caret line="134" column="73" selection-start-line="134" selection-start-column="58" selection-end-line="134" selection-end-column="73" />
+              <folding>
+                <element signature="e#17101#17117#0" expanded="true" />
+                <element signature="e#18049#18779#0" expanded="true" />
+                <element signature="e#65299#65364#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -72,9 +81,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>empty(</find>
-      <find>empty</find>
-      <find>isEm</find>
       <find>addTo</find>
       <find>most re</find>
       <find>split</find>
@@ -102,6 +108,9 @@
       <find>rinsert</find>
       <find>not implemented</find>
       <find>InputIt</find>
+      <find>LocalIter</find>
+      <find>Iterator</find>
+      <find>friend</find>
     </findStrings>
     <replaceStrings>
       <replace>OVERFLOW_BUCKET_SIZE</replace>
@@ -123,6 +132,12 @@
   </component>
   <component name="JsBuildToolGruntFileManager" detection-done="true" sorting="DEFINITION_ORDER" />
   <component name="JsBuildToolPackageJson" detection-done="true" sorting="DEFINITION_ORDER" />
+  <component name="JsFlowSettings">
+    <service-enabled>true</service-enabled>
+    <exe-path />
+    <other-services-enabled>true</other-services-enabled>
+    <auto-save>true</auto-save>
+  </component>
   <component name="JsGulpfileManager">
     <detection-done>true</detection-done>
     <sorting>DEFINITION_ORDER</sorting>
@@ -143,7 +158,6 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="ProjectPane" />
       <pane id="Scope">
         <subPane subId="Scope 'Project Files'; set:Project Files; class com.intellij.psi.search.scope.ProjectFilesScope">
           <expand>
@@ -155,6 +169,7 @@
           <select />
         </subPane>
       </pane>
+      <pane id="ProjectPane" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -204,17 +219,18 @@
       <workItem from="1528185852822" duration="29000" />
       <workItem from="1528902915824" duration="1574000" />
       <workItem from="1528906319991" duration="3201000" />
+      <workItem from="1529182849260" duration="127000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="18830000" />
+    <option name="totallyTimeSpent" value="23546000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1680" height="1050" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.26190478" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.27106228" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
@@ -226,7 +242,7 @@
       <window_info anchor="bottom" id="TODO" order="6" />
       <window_info anchor="bottom" id="Database Changes" order="7" show_stripe_button="false" />
       <window_info anchor="bottom" id="Messages" order="8" weight="0.54387754" />
-      <window_info active="true" anchor="bottom" id="Terminal" order="9" visible="true" weight="0.4367347" />
+      <window_info anchor="bottom" id="Terminal" order="9" weight="0.4367347" />
       <window_info anchor="bottom" id="Event Log" order="10" side_tool="true" />
       <window_info anchor="bottom" id="Version Control" order="11" />
       <window_info anchor="bottom" id="CMake" order="12" />
@@ -251,16 +267,6 @@
           <line>220</line>
           <option name="timeStamp" value="18" />
         </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/ADS_set.h</url>
-          <line>333</line>
-          <option name="timeStamp" value="20" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="com.jetbrains.cidr.execution.debugger.OCBreakpointType">
-          <url>file://$PROJECT_DIR$/main.cpp</url>
-          <line>6</line>
-          <option name="timeStamp" value="21" />
-        </line-breakpoint>
       </breakpoints>
       <breakpoints-dialog>
         <breakpoints-dialog />
@@ -276,6 +282,11 @@
   </component>
   <component name="debuggerHistoryManager">
     <expressions id="evaluateCodeFragment">
+      <expression>
+        <expression-string>u.end();</expression-string>
+        <language-id>ObjectiveC</language-id>
+        <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
+      </expression>
       <expression>
         <expression-string>size();</expression-string>
         <language-id>ObjectiveC</language-id>
@@ -387,30 +398,46 @@
         </state>
       </provider>
     </entry>
+    <entry file="file:///Library/Developer/CommandLineTools/usr/include/c++/v1/string">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="179">
+          <caret line="1212" selection-start-line="1212" selection-end-line="1212" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ADS_set.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="692">
+          <caret line="176" selection-start-line="176" selection-end-line="177" />
+          <folding>
+            <element signature="e#37#58#0" expanded="true" />
+            <element signature="e#148#176#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/simpletest.cpp">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="148">
+        <state relative-caret-position="3388">
           <caret line="154" column="38" selection-start-line="154" selection-start-column="38" selection-end-line="154" selection-end-column="38" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/main.cpp">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="132">
-          <caret line="6" column="8" selection-start-line="6" selection-start-column="8" selection-end-line="6" selection-end-column="8" />
-          <folding>
-            <element signature="e#0#19#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="484">
+          <caret line="22" column="20" selection-start-line="22" selection-start-column="20" selection-end-line="22" selection-end-column="20" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ADS_set.h">
+    <entry file="file:///Library/Developer/CommandLineTools/usr/include/c++/v1/__hash_table">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="157">
-          <caret line="157" column="50" selection-start-line="157" selection-start-column="43" selection-end-line="157" selection-end-column="50" />
+        <state relative-caret-position="2948">
+          <caret line="134" column="73" selection-start-line="134" selection-start-column="58" selection-end-line="134" selection-end-column="73" />
           <folding>
-            <element signature="e#148#176#0" expanded="true" />
-            <element signature="e#4677#4695#0" expanded="true" />
+            <element signature="e#17101#17117#0" expanded="true" />
+            <element signature="e#18049#18779#0" expanded="true" />
+            <element signature="e#65299#65364#0" expanded="true" />
           </folding>
         </state>
       </provider>
