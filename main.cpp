@@ -13,7 +13,7 @@ int main() {
 
     std::vector<int> v( 123 );
     std::iota( std::begin( v ), std::end( v ), 1 );
-    ADS_set<int>* linearHashTable = new ADS_set<int>({8, 17, 9, 33, 34, 25, 50, 2, 28, 5, 55});
+    ADS_set<int>* linearHashTable = new ADS_set<int>(std::begin(v), std::end(v));
 
     linearHashTable->insertKey(16);
     linearHashTable->insertKey(13);
@@ -26,9 +26,13 @@ int main() {
 
     std::cout<<std::endl;
 
-    for (ADS_set<int>::Iterator it = linearHashTable->begin(); it != linearHashTable->end() ; it++) {
+    ADS_set<int>* tableCopy = new ADS_set<int>(*linearHashTable);
+
+    for (ADS_set<int>::Iterator it = tableCopy->begin(); it != tableCopy->end() ; it++) {
         std::cout<<*it<<", ";
     }
+
+
 
     return 0;
 }

@@ -212,7 +212,12 @@ public:
 
     ADS_set(std::initializer_list<key_type> ilist): ADS_set{} { insert(ilist); };
     template<typename InputIt> ADS_set(InputIt first, InputIt last): ADS_set{} { insert(first, last); }
-    ADS_set(const ADS_set&) { throw std::runtime_error("Not implemented!"); }
+    ADS_set(const ADS_set& other) {
+        for (Iterator it = other.begin(); it != other.end(); ++it){
+            insertKey(*it);
+        }
+    }
+
     ~ADS_set() {
         for(size_t i = 0; i < bucketsSize; ++i) {
             if(table[i].overflowBucket) { destructOverflow(i); }
@@ -231,7 +236,7 @@ public:
 
     // Wie oft gegebene Wert gespeichert ist
     size_type count(const key_type& key) const;
-    iterator find(const key_type& ) const { throw std::runtime_error("Not implemented!"); };
+    iterator find(const key_type& key) const { throw std::runtime_error("Not implemented!"); };
 
     void clear() { throw std::runtime_error("Not implemented!"); };
     void swap(ADS_set& ) { throw std::runtime_error("Not implemented!"); };
@@ -407,6 +412,12 @@ typename ADS_set<Key,N>::Bucket *ADS_set<Key, N>::insertKey(const key_type &key)
     if (empty()) split();
 
     size_type index{hashIndex(key)};
+
+    if (hashIndex(key) < nextToSplit) {
+        index = nextIndex(key);
+    } else {
+        index = hashIndex(key);
+    }
 
     for (size_type i = 0; i < N; ++i) {
         if (table[index].bucketMode[i] == Mode::free) {
