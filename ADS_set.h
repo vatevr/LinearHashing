@@ -92,39 +92,36 @@ private:
     };
 
     friend class PrivateBucketIterator;
-
-    template <typename Key, size_t N = 3>
     class PrivateBucketIterator {
     private:
-        ADS_set<Key, N>* hashTable_;
+        Bucket* hashTable_;
         size_t index_;
+        size_t tableSize_;
 
     public:
         using value_type = Bucket;
         using difference_type = std::ptrdiff_t;
-        using reference = const value_type&;
-        using pointer = const value_type*;
+        using reference = value_type&;
+        using pointer = value_type*;
         using iterator_category = std::forward_iterator_tag;
 
 
-        PrivateBucketIterator(ADS_set<Key, N>* hashTable, size_t index)
-        : hashTable_(hashTable), index_(index)
-        {
+        PrivateBucketIterator(Bucket* hashTable, size_t index, size_t tableSize)
+        : hashTable_{hashTable}, index_{index}, tableSize_{tableSize}
+        {}
 
-        }
-
-        PrivateBucketIterator(const PrivateBucketIterator<Key, N>& other)
-                : PrivateBucketIterator(other.hashTable_, other.index_)
-        {
-
-        }
+        PrivateBucketIterator(const PrivateBucketIterator& other)
+                : PrivateBucketIterator(other.hashTable_, other.index_, other.tableSize_)
+        {}
 
         reference operator*() const
         {
             if(index_ == -1)
                 throw std::runtime_error("Table array exceeded");
 
-            return *hashTable_[index_];
+            Bucket* bucket = &hashTable_[index_];
+
+            return *bucket;
         };
 
         pointer operator->() const
@@ -140,8 +137,8 @@ private:
             if(index_ == -1)
                 throw std::runtime_error("Table array exceeded");
 
-            if(++index_ == N)
-                index_ = -1;
+            if(++index_ == tableSize_)
+                index_ = (size_t)-1;
 
             return *this;
         };
@@ -165,16 +162,16 @@ private:
         };
     };
 
-    using bucketIterator = PrivateBucketIterator<Key, N>;
+    using bucketIterator = PrivateBucketIterator;
 
-    bucketIterator bucketBegin()
+    bucketIterator bucketBegin() const
     {
-        return bucketIterator(this, 0);
+        return bucketIterator(this->table, 0, tableSize);
     }
 
-    bucketIterator bucketEnd()
+    bucketIterator bucketEnd() const
     {
-        return bucketIterator(this, -1);
+        return bucketIterator(this->table, -1, tableSize);
     }
 
     size_type bucketsSize;
@@ -227,7 +224,7 @@ public:
     ADS_set& operator=(const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
     ADS_set& operator=(std::initializer_list<key_type> ) { throw std::runtime_error("Not implemented!"); };
 
-    size_type size() const { return tableSize; };
+    size_type size() const { return bucketsSize; };
     bool empty() const {
         return !size();
     };
@@ -245,8 +242,8 @@ public:
 
     size_type erase(const key_type& ){ throw std::runtime_error("Not implemented!"); };
 
-    const_iterator begin() const { throw std::runtime_error("Not implemented!"); };
-    const_iterator end() const { throw std::runtime_error("Not implemented!"); };
+    const_iterator begin() const { return iterator{bucketBegin(), bucketEnd()}; };
+    const_iterator end() const { return iterator{bucketEnd(), bucketEnd()}; };
 
     void dump(std::ostream& o = std::cerr) const;
     Bucket *insertKey(const key_type &key);
@@ -260,11 +257,94 @@ class ADS_set<Key,N>::Iterator {
     ADS_set<Key, N>::Bucket* position_;
     ADS_set<Key, N>::OverflowBucket* overflowBucket_;
     size_t index_;
-    // size of table
-    size_t bucketCount_;
 
-    void advanceToUsed() {
+    ADS_set<Key, N>::PrivateBucketIterator beginIterator_;
+    ADS_set<Key, N>::PrivateBucketIterator endIterator_;
 
+    void advanceToUsed()
+    {
+        if(position_ != nullptr && overflowBucket_ == nullptr)
+        {
+            bool found = false;
+            for (size_t i = index_ + 1; i < N; i++)
+            {
+                if (position_->bucketMode[i] ==
+                    ADS_set<Key, N>::Mode::used)
+                {
+                    index_ = i;
+                    found = true;
+                    break;
+                }
+            }
+
+            if(!found)
+            {
+                if(position_->overflowBucket)
+                {
+                    overflowBucket_ = position_->overflowBucket;
+                    position_ = nullptr;
+                    index_ = -1;
+                    advanceToUsed();
+                }
+                else
+                {
+                    if(++beginIterator_ != endIterator_)
+                    {
+                        position_ = &(*beginIterator_);
+                        overflowBucket_ = nullptr;
+                        index_ = -1;
+                        advanceToUsed();
+                    }
+                    else
+                    {
+                        position_ = nullptr;
+                        overflowBucket_ = nullptr;
+                    }
+                }
+            }
+        }
+        else if(position_ == nullptr && overflowBucket_ != nullptr)
+        {
+            bool found = false;
+            for (size_t i = index_ + 1;
+                i < ADS_set<Key, N>::OVERFLOW_BUCKET_SIZE;
+                i++)
+            {
+                if (overflowBucket_->overflowMode[i] ==
+                    ADS_set<Key, N>::Mode::used)
+                {
+                    index_ = i;
+                    found = true;
+                    break;
+                }
+            }
+
+            if(!found)
+            {
+                if(overflowBucket_->nextOverflow)
+                {
+                    position_ = nullptr;
+                    overflowBucket_ = overflowBucket_->nextOverflow;
+                    index_ = -1;
+                    advanceToUsed();
+                }
+                else
+                {
+                    if(++beginIterator_ != endIterator_)
+                    {
+                        position_ = &(*beginIterator_);
+                        overflowBucket_ = nullptr;
+                        index_ = -1;
+                        advanceToUsed();
+                    }
+                    else
+                    {
+                        position_ = nullptr;
+                        overflowBucket_ = nullptr;
+                    }
+                }
+            }
+        }
     }
 public:
     using value_type = Key;
@@ -274,18 +354,50 @@ public:
     using iterator_category = std::forward_iterator_tag;
     using BucketMode = ADS_set<Key, N>::Mode;
     using Bucket = ADS_set<Key, N>::Bucket;
+    using BucketIterator = ADS_set<Key, N>::PrivateBucketIterator;
 
-    explicit Iterator(size_t bucketCount, size_t index, Bucket* position)
-    :position_{position}, index_{index}, bucketCount_{bucketCount}
+    explicit Iterator(BucketIterator beginIt, BucketIterator endIt)
+    : beginIterator_{beginIt}, endIterator_{endIt}
+    , position_{nullptr}, overflowBucket_{nullptr}
+    // TODO explicit casts
+    , index_{(size_t)-1}
     {
-
+        if(beginIterator_ != endIterator_)
+        {
+            position_ = &(*beginIterator_);
+            advanceToUsed();
+        }
     };
-    reference operator*() const { throw std::runtime_error("Not implemented!"); };
-    pointer operator->() const { throw std::runtime_error("Not implemented!"); };
-    Iterator& operator++() {  };
-    Iterator operator++(int) { throw std::runtime_error("Not implemented!"); };
-    friend bool operator==(const Iterator& , const Iterator& ) { throw std::runtime_error("Not implemented!"); };
-    friend bool operator!=(const Iterator& , const Iterator& ) { throw std::runtime_error("Not implemented!"); };
+    reference operator*() const
+    {
+        if(position_ == nullptr && overflowBucket_ == nullptr)
+        {
+            throw std::runtime_error("Access beyond iterator");
+        }
+
+        const value_type *value = overflowBucket_ == nullptr ? &position_->bucketElements[index_] : &overflowBucket_->overflowElements[index_];
+
+        return *value;
+    };
+    pointer operator->() const
+    {
+        return &(*this);
+    };
+    Iterator& operator++()
+    {
+        advanceToUsed();
+        return *this;
+    };
+    Iterator operator++(int)
+    {
+        Iterator other {*this};
+        ++*this;
+        return other;
+    };
+    friend bool operator==(const Iterator& lhs, const Iterator& rhs) {
+        return lhs.position_ == rhs.position_ && lhs.overflowBucket_ == rhs.overflowBucket_ && lhs.index_ == rhs.index_;
+    };
+    friend bool operator!=(const Iterator& lhs, const Iterator& rhs) { return !(lhs == rhs); };
 };
 
 template <typename Key, size_t N> void swap(ADS_set<Key,N>& lhs, ADS_set<Key,N>& rhs) { lhs.swap(rhs); }
