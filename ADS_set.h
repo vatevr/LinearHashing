@@ -7,138 +7,90 @@
 #include <iostream>
 #include <stdexcept>
 
-template <typename Key, size_t N = 3>
+template<typename Key, size_t N = 3>
 class ADS_set {
 public:
     class Iterator;
     using value_type = Key;
     using key_type = Key;
-    using reference = key_type&;
-    using const_reference = const key_type&;
+    using reference = key_type &;
+    using const_reference = const key_type &;
     using size_type = size_t;
     using difference_type = std::ptrdiff_t;
     using iterator = Iterator;
     using const_iterator = Iterator;
+    using key_compare = std::less<key_type>;   // B+-Tree
     using key_equal = std::equal_to<key_type>; // Hashing
     using hasher = std::hash<key_type>;        // Hashing
-
+    static const size_t SIZE_INVALID = (size_t) -1;
 private:
-    enum class Mode{ free, used };
-    static const size_t OVERFLOW_BUCKET_SIZE = N;
-
-    struct OverflowBucket {
-        Key* overflowElements = new Key[OVERFLOW_BUCKET_SIZE]();
-        Mode overflowMode[OVERFLOW_BUCKET_SIZE];
-        OverflowBucket *nextOverflow = nullptr;
-
-        OverflowBucket() {
-            for (size_type i{0}; i < OVERFLOW_BUCKET_SIZE; ++i) {
-                overflowMode[i] = Mode::free;
-            }
-        }
-
-        ~OverflowBucket() {
-            if (nextOverflow) delete nextOverflow;
-        }
-
-        void dump(std::ostream &o) {
-            for (size_type j{0}; j < N; ++j) {
-                switch (overflowMode[j]) {
-                    case Mode::used:
-                        o << overflowElements[j];
-                        break;
-                    case Mode::free:
-                        o << "-";
-                        break;
-                }
-                o << " ";
-            }
-        }
+    struct Element {
+        Key element;
+        bool used = false;
     };
 
     struct Bucket {
-        Key* bucketElements = new Key[N]();
-        Mode bucketMode[N];
-        OverflowBucket *overflowBucket = nullptr;
+        Element *elements;
+        Bucket *overflowBucket{nullptr};
 
         Bucket() {
-            for (size_type i{0}; i < N; ++i) {
-                bucketMode[i] = Mode::free;
-            }
-        }
-
-        void dump(std::ostream &o) {
-            for (size_type j{0}; j < N; ++j) {
-                switch (bucketMode[j]) {
-                    case Mode::used:
-                        o << bucketElements[j];
-                        break;
-                    case Mode::free:
-                        o << "-";
-                        break;
-                }
-                o << " ";
-            }
-
-            if (overflowBucket) {
-                o << "--------> ";
-                overflowBucket->dump(o);
-            }
+            elements = new Element[N];
         }
 
         ~Bucket() {
-            // TODO
+            delete[] elements;
+
+            if (overflowBucket) {
+                delete overflowBucket;
+            }
         }
     };
 
     friend class PrivateBucketIterator;
     class PrivateBucketIterator {
     private:
-        Bucket* hashTable_;
-        size_t index_;
-        size_t tableSize_;
-
+        Bucket* _table;
+        size_t _index;
+        size_t _size;
     public:
         using value_type = Bucket;
-        using difference_type = std::ptrdiff_t;
-        using reference = value_type&;
-        using pointer = value_type*;
+        using reference = value_type &;
+        using pointer = value_type *;
         using iterator_category = std::forward_iterator_tag;
 
-
-        PrivateBucketIterator(Bucket* hashTable, size_t index, size_t tableSize)
-        : hashTable_{hashTable}, index_{index}, tableSize_{tableSize}
+        PrivateBucketIterator(Bucket* hashTable, size_t index, size_t size)
+                : _table{hashTable}, _index{index}, _size{size}
         {}
 
         PrivateBucketIterator(const PrivateBucketIterator& other)
-                : PrivateBucketIterator(other.hashTable_, other.index_, other.tableSize_)
+                : PrivateBucketIterator(other._table, other._index, other._size)
         {}
 
         reference operator*() const
         {
-            if(index_ == -1)
+            if(_index == SIZE_INVALID)
                 throw std::runtime_error("Table array exceeded");
 
-            Bucket* bucket = &hashTable_[index_];
+            Bucket* bucket = &_table[_index];
 
             return *bucket;
         };
 
         pointer operator->() const
         {
-            if(index_ == -1)
+            if(_index == SIZE_INVALID)
                 throw std::runtime_error("Table array exceeded");
 
-            return &hashTable_[index_];
+            return &_table[_index];
         };
 
         PrivateBucketIterator& operator++()
         {
-            if(index_ == -1)
+            if(_index == SIZE_INVALID)
                 throw std::runtime_error("Table array exceeded");
 
-            if(++index_ == tableSize_)
-                index_ = (size_t)-1;
+            if(++_index == _size)
+                _index = SIZE_INVALID;
 
             return *this;
         };
@@ -152,8 +104,8 @@ private:
 
         friend bool operator==(const PrivateBucketIterator& me, const PrivateBucketIterator& other)
         {
-            return me.hashTable_ == other.hashTable_
-                    && me.index_ == other.index_;
+            return me._table == other._table
+                   && me._index == other._index;
         };
 
         friend bool operator!=(const PrivateBucketIterator& me, const PrivateBucketIterator& other)
@@ -162,448 +114,365 @@ private:
         };
     };
 
+    // Initial size of table 2 ^ d
+    size_t nextToSplit{0}, tableSize{0}, d{2}, maxSize;
+    // Max load factor of 70%
+    float maxLoadFactor{0.7};
+    Bucket* table{nullptr};
+
     using bucketIterator = PrivateBucketIterator;
 
-    bucketIterator bucketBegin() const
-    {
-        return bucketIterator(this->table, 0, tableSize);
+    void split() {
+        Bucket* tmp = new Bucket[maxSize + 1];
+        for (size_t i = 0; i < maxSize; ++i) {
+            std::swap(tmp[i].elements, table[i].elements);
+            std::swap(tmp[i].overflowBucket, table[i].overflowBucket);
+            /* key ---> hash ---> 0
+             * 0 x-- -> null
+             * 1 xxx -> x---
+             * 2 --- -> null
+             * 3 --- -> null
+             * 4 x-- -> null
+             */
+        }
+        delete[] table;
+        table = tmp;
+        ++maxSize;
     }
 
-    bucketIterator bucketEnd() const
-    {
-        return bucketIterator(this->table, -1, tableSize);
+    size_t bucketAddress(const Key& key) const {
+        size_t n = hasher{}(key);
+        if (n % (size_t)(1 << d) >= nextToSplit)
+            return n % (size_t)(1 << d);
+        else
+            return n % (size_t)(1 << (d + 1));
     }
 
-    size_type bucketsSize;
-    size_type d{3};
-    size_type nextToSplit{0};
-    size_type tableSize{0};
+    void rehash(size_t index) {
+        // we always rehash last splitted position;
+        Bucket* bucket = &table[index];
+        while (bucket) {
+            for (size_t i = 0; i < N; ++i) {
+                if (bucket->elements[i].used && bucketAddress(bucket->elements[i].element) != index) {
+                    key_type key = bucket->elements[i].element;
+                    bucket->elements[i].used = false;
+                    --tableSize;
 
-    Bucket* table {nullptr};
-    // 70% is optimal value
-    float maxLoadFactor{0.7};
+                    insertUnchecked(key, false);
+                }
+            }
 
-    size_type hashIndex(const key_type &key) const { return hasher{}(key) % (size_type)pow(2, d); }
-    size_type nextIndex(const key_type &key) const { return hasher{}(key) % (size_type)pow(2, d + 1); }
-
-    // Baut tabelle die genau die Größe tableSize hat
-    void rehash(size_type index);
-    void rehashOverflow(OverflowBucket*);
-
-    void destructOverflow(int index) {
-        delete table[index].overflowBucket;
-        table[index].overflowBucket = nullptr;
+            bucket = bucket->overflowBucket;
+        }
     }
 
-    bool isSplittingComplete() { return nextToSplit + 1 == pow(2, d); };
-    void nextRound() {
-        nextToSplit = 0;
-        ++d;
-    };
+    void insertUnchecked(const key_type &key, bool toSplit = true) {
+        size_type address = bucketAddress(key);
+        Bucket* bucket = &table[address];
+        bool toRehash = false;
+        bool inserted = false;
 
-    void split();
-    void addToOverflow(Key, OverflowBucket*);
+        while(bucket && !inserted) {
+            for (size_t i = 0; i < N; ++i) {
+                // Should at some point reach here
+                if (!bucket->elements[i].used) {
+                    bucket->elements[i].element = key;
+                    bucket->elements[i].used = true;
+                    inserted = true;
+                    break;
+                }
+
+                if (i == N - 1) {
+                    if (!bucket->overflowBucket) {
+                        bucket->overflowBucket = new Bucket();
+                        toRehash = true;
+                    }
+
+                    bucket = bucket->overflowBucket;
+                }
+            }
+        }
+
+        tableSize++;
+
+        if (toRehash && toSplit) {
+            split();
+            size_t indexToRehash = nextToSplit;
+            ++nextToSplit;
+            // Splitting einmal durch
+            if (pow(2.0, d) == nextToSplit) {
+                d++;
+                nextToSplit = 0;
+            }
+            // nextToSplit already points to the next, we need to rehash the previous one
+            rehash(indexToRehash);
+        }
+    }
 
 public:
     ADS_set() {
-        bucketsSize = pow(2, d);
-        table = new Bucket[bucketsSize];
+        maxSize = (size_t)(1<<d);
+        table = new Bucket[maxSize];
     }
 
-    ADS_set(std::initializer_list<key_type> ilist): ADS_set{} { insert(ilist); };
+    ADS_set(std::initializer_list<key_type> ilist): ADS_set{} {
+        insert(ilist);
+    };
     template<typename InputIt> ADS_set(InputIt first, InputIt last): ADS_set{} { insert(first, last); }
-    ADS_set(const ADS_set& other) {
-        for (Iterator it = other.begin(); it != other.end(); ++it){
-            insertKey(*it);
+
+    ADS_set(const ADS_set& other): ADS_set{} {
+        for (const_iterator it = other.begin(); it != other.end(); ++it){
+            insert(*it);
         }
     }
 
     ~ADS_set() {
-        for(size_t i = 0; i < bucketsSize; ++i) {
-            if(table[i].overflowBucket) { destructOverflow(i); }
-        }
-
         delete[] table;
     }
 
-    ADS_set& operator=(const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
-    ADS_set& operator=(std::initializer_list<key_type> ) { throw std::runtime_error("Not implemented!"); };
+    ADS_set &operator=(const ADS_set &other) {
+        if (this == &other) return *this;
+        ADS_set tmp{other};
+        swap(tmp);
+        return *this;
+    }
+    ADS_set &operator=(std::initializer_list<key_type> ilist) {
+        ADS_set tmp{ilist};
+        swap(tmp);
+        return *this;
+    }
 
-    size_type size() const { return bucketsSize; };
-    bool empty() const {
-        return !size();
-    };
+    size_type size() const { return tableSize; }
+
+    bool empty() const { return !tableSize;};
 
     // Wie oft gegebene Wert gespeichert ist
-    size_type count(const key_type& key) const;
-    iterator find(const key_type& key) const { throw std::runtime_error("Not implemented!"); };
+    size_type count(const key_type& key) const {
+        if (empty()) {
+            return 0;
+        }
 
-    void clear() { throw std::runtime_error("Not implemented!"); };
-    void swap(ADS_set& ) { throw std::runtime_error("Not implemented!"); };
 
-    void insert(std::initializer_list<key_type> ilist);
-    std::pair<iterator,bool> insert(const key_type& ) { throw std::runtime_error("Not implemented!"); };
-    template<typename InputIt> void insert(InputIt first, InputIt last);
+        size_type index = bucketAddress(key);
 
-    size_type erase(const key_type& ){ throw std::runtime_error("Not implemented!"); };
+        Bucket* bucket = &table[index];
 
-    const_iterator begin() const { return iterator{bucketBegin(), bucketEnd()}; };
-    const_iterator end() const { return iterator{bucketEnd(), bucketEnd()}; };
+        while (bucket) {
+            for (size_type i{0}; i < N; ++i) {
+                if (bucket->elements[i].used) {
+                    if (key_equal{}(key, bucket->elements[i].element)) {
+                        return 1;
+                    }
+                }
+            }
 
-    void dump(std::ostream& o = std::cerr) const;
-    Bucket *insertKey(const key_type &key);
+            bucket = bucket->overflowBucket;
+        }
 
-    friend bool operator==(const ADS_set& , const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
-    friend bool operator!=(const ADS_set& , const ADS_set& ) { throw std::runtime_error("Not implemented!"); };
+        return 0;
+    };
+
+    iterator find(const key_type& key) const {
+        size_t index = bucketAddress(key);
+        Bucket* bucket = &table[index];
+        while (bucket) {
+            for (size_t i = 0; i < N; ++i) {
+                if (bucket->elements[i].used && key_equal{}(bucket->elements[i].element, key)) {
+                    return iterator{bucketBegin(index), bucketEnd(), bucket, i};
+                }
+            }
+
+            bucket = bucket->overflowBucket;
+        }
+
+        return end();
+    };
+
+    void clear() {
+        ADS_set tmp;
+        swap(tmp);
+    }
+
+    void swap(ADS_set &other) {
+        std::swap(table, other.table);
+        std::swap(d, other.d);
+        std::swap(nextToSplit, other.nextToSplit);
+        std::swap(tableSize, other.tableSize);
+        std::swap(maxSize, other.maxSize);
+        std::swap(maxLoadFactor, other.maxLoadFactor);
+    }
+
+    void insert(std::initializer_list<key_type> ilist) {
+        for (const auto &key: ilist) {
+            insert(key);
+        }
+    }
+
+    std::pair<iterator, bool> insert(const key_type &key) {
+        iterator it{find(key)};
+        if (it != end()) {
+            return {it, false};
+        }
+
+        insertUnchecked(key);
+        return {iterator{find(key)},true};
+    }
+
+    template<typename InputIt>
+    void insert(InputIt first, InputIt last) {
+        for (auto it = first; it != last ; ++it) {
+            insert(*it);
+        }
+    }
+
+    size_type erase(const key_type &key) {
+        size_t index = bucketAddress(key);
+        Bucket* bucket = &table[index];
+
+        while (bucket) {
+            for (size_t i = 0; i < N; ++i) {
+                if (bucket->elements[i].used && key_equal{}(bucket->elements[i].element, key)) {
+                    bucket->elements[i].used = false;
+                    --tableSize;
+                    return 1;
+                }
+            }
+
+            bucket = bucket->overflowBucket;
+        }
+
+        return 0;
+    }
+
+    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table, index, maxSize); }
+    bucketIterator bucketEnd() const { return bucketIterator(this->table, SIZE_INVALID, maxSize); }
+    const_iterator begin() const { return const_iterator{bucketBegin(0), bucketEnd(), table, 0}; };
+    const_iterator end() const { return const_iterator{bucketEnd(), bucketEnd(), nullptr, SIZE_INVALID}; };
+
+    void dump(std::ostream &o = std::cerr) const {
+        for (size_type i{0}; i < maxSize; ++i) {
+            Bucket* bucket = &table[i];
+
+            while (bucket != nullptr) {
+                for (size_type j{0}; j < N; ++j) {
+                    bucket->elements[j].used ? o << bucket->elements[j].element : o << "-";
+                    o << " ";
+                }
+
+                bucket = bucket->overflowBucket;
+            }
+
+            o << "\n";
+        }
+    };
+
+    friend bool operator==(const ADS_set& lhs, const ADS_set& rhs) {
+        if (lhs.tableSize != rhs.tableSize) return false;
+
+        for (const_iterator it = rhs.begin(); it != rhs.end(); ++it) {
+            if (lhs.find(*it) == lhs.end()) return false;
+        }
+
+        return true;
+    };
+    friend bool operator!=(const ADS_set& lhs, const ADS_set& rhs) {
+        return !(lhs == rhs);
+    };
 };
 
-template <typename Key, size_t N>
-class ADS_set<Key,N>::Iterator {
-    ADS_set<Key, N>::Bucket* position_;
-    ADS_set<Key, N>::OverflowBucket* overflowBucket_;
-    size_t index_;
-
+template<typename Key, size_t N>
+class ADS_set<Key, N>::Iterator {
+private:
     ADS_set<Key, N>::PrivateBucketIterator beginIterator_;
     ADS_set<Key, N>::PrivateBucketIterator endIterator_;
+    ADS_set<Key, N>::Bucket* position_;
+    size_t index_;
 
-    void advanceToUsed()
-    {
-        if(position_ != nullptr && overflowBucket_ == nullptr)
-        {
-            bool found = false;
-            for (size_t i = index_ + 1; i < N; i++)
-            {
-                if (position_->bucketMode[i] ==
-                    ADS_set<Key, N>::Mode::used)
-                {
-                    index_ = i;
-                    found = true;
-                    break;
-                }
-            }
-
-            if(!found)
-            {
-                if(position_->overflowBucket)
-                {
-                    overflowBucket_ = position_->overflowBucket;
-                    position_ = nullptr;
-                    index_ = -1;
-                    advanceToUsed();
-                }
-                else
-                {
-                    if(++beginIterator_ != endIterator_)
-                    {
-                        position_ = &(*beginIterator_);
-                        overflowBucket_ = nullptr;
-                        index_ = -1;
-                        advanceToUsed();
-                    }
-                    else
-                    {
-                        position_ = nullptr;
-                        overflowBucket_ = nullptr;
-                    }
-                }
-            }
+    void advanceToNext() {
+        if (index_ == N) {
+            position_ = position_->overflowBucket;
+            index_ = 0;
         }
-        else if(position_ == nullptr && overflowBucket_ != nullptr)
-        {
-            bool found = false;
-            for (size_t i = index_ + 1;
-                i < ADS_set<Key, N>::OVERFLOW_BUCKET_SIZE;
-                i++)
-            {
-                if (overflowBucket_->overflowMode[i] ==
-                    ADS_set<Key, N>::Mode::used)
-                {
+
+        if (position_) {
+            for (size_t i = index_; i < N; ++i) {
+                if (position_->elements[i].used) {
                     index_ = i;
-                    found = true;
-                    break;
+                    return;
                 }
             }
 
-            if(!found)
-            {
-                if(overflowBucket_->nextOverflow)
-                {
-                    position_ = nullptr;
-                    overflowBucket_ = overflowBucket_->nextOverflow;
-                    index_ = -1;
-                    advanceToUsed();
-                }
-                else
-                {
-                    if(++beginIterator_ != endIterator_)
-                    {
-                        position_ = &(*beginIterator_);
-                        overflowBucket_ = nullptr;
-                        index_ = -1;
-                        advanceToUsed();
-                    }
-                    else
-                    {
-                        position_ = nullptr;
-                        overflowBucket_ = nullptr;
-                    }
-                }
+            position_ = position_->overflowBucket;
+            index_ = 0;
+            advanceToNext();
+        } else {
+            if (++beginIterator_ != endIterator_) {
+                position_ = &(*beginIterator_);
+                index_ = 0;
+                advanceToNext();
+            } else {
+                index_ = (size_t)-1;
             }
         }
     }
 public:
     using value_type = Key;
     using difference_type = std::ptrdiff_t;
-    using reference = const value_type&;
-    using pointer = const value_type*;
+    using reference = const value_type &;
+    using pointer = const value_type *;
     using iterator_category = std::forward_iterator_tag;
-    using BucketMode = ADS_set<Key, N>::Mode;
-    using Bucket = ADS_set<Key, N>::Bucket;
     using BucketIterator = ADS_set<Key, N>::PrivateBucketIterator;
+    using Bucket = ADS_set<Key, N>::Bucket;
 
-    explicit Iterator(BucketIterator beginIt, BucketIterator endIt)
-    : beginIterator_{beginIt}, endIterator_{endIt}
-    , position_{nullptr}, overflowBucket_{nullptr}
-    // TODO explicit casts
-    , index_{(size_t)-1}
+    Iterator(): beginIterator_{BucketIterator(nullptr, 0, 0)}, endIterator_{BucketIterator(nullptr, 0, 0)}, position_{
+            nullptr}, index_{(size_t)-1} {
+
+    }
+
+    explicit Iterator(BucketIterator beginIt, BucketIterator endIt, Bucket* position, size_t index)
+            : beginIterator_{beginIt}, endIterator_{endIt}, position_{position}, index_{index}
     {
-        if(beginIterator_ != endIterator_)
-        {
-            position_ = &(*beginIterator_);
-            advanceToUsed();
+        if(beginIterator_ != endIterator_) {
+            advanceToNext();
         }
-    };
+    }
+
     reference operator*() const
     {
-        if(position_ == nullptr && overflowBucket_ == nullptr)
+        if(position_ == nullptr)
         {
             throw std::runtime_error("Access beyond iterator");
         }
 
-        const value_type *value = overflowBucket_ == nullptr ? &position_->bucketElements[index_] : &overflowBucket_->overflowElements[index_];
+        const value_type *value = &position_->elements[index_].element;
 
         return *value;
     };
     pointer operator->() const
     {
-        return &(*this);
+        const value_type *val = &position_->elements[index_].element;
+        return val;
     };
-    Iterator& operator++()
-    {
-        advanceToUsed();
+
+    Iterator &operator++() {
+        ++index_;
+        advanceToNext();
         return *this;
-    };
-    Iterator operator++(int)
-    {
+    }
+
+    Iterator operator++(int) {
         Iterator other {*this};
         ++*this;
         return other;
-    };
+    }
+
     friend bool operator==(const Iterator& lhs, const Iterator& rhs) {
-        return lhs.position_ == rhs.position_ && lhs.overflowBucket_ == rhs.overflowBucket_ && lhs.index_ == rhs.index_;
+        return lhs.position_ == rhs.position_ && lhs.index_ == rhs.index_;
     };
     friend bool operator!=(const Iterator& lhs, const Iterator& rhs) { return !(lhs == rhs); };
 };
 
-template <typename Key, size_t N> void swap(ADS_set<Key,N>& lhs, ADS_set<Key,N>& rhs) { lhs.swap(rhs); }
-
-template <typename Key, size_t N>
-typename ADS_set<Key,N>::Bucket *ADS_set<Key, N>::insertKey(const key_type &key) {
-    if (empty()) split();
-
-    size_type index{hashIndex(key)};
-
-    if (hashIndex(key) < nextToSplit) {
-        index = nextIndex(key);
-    } else {
-        index = hashIndex(key);
-    }
-
-    for (size_type i = 0; i < N; ++i) {
-        if (table[index].bucketMode[i] == Mode::free) {
-            table[index].bucketElements[i] = key;
-            table[index].bucketMode[i] = Mode::used;
-            break;
-        }
-
-        if (i == N - 1) {
-            if (!table[index].overflowBucket) {
-                table[index].overflowBucket = new OverflowBucket();
-                addToOverflow(key, table[index].overflowBucket);
-
-                split();
-                rehash(nextToSplit);
-
-                // Splitting einmal durch
-                if (pow(2, d) == nextToSplit) {
-                    d++;
-                    nextToSplit = 0;
-                } else {
-                    nextToSplit++;
-                }
-            } else {
-                addToOverflow(key, table[index].overflowBucket);
-            }
-
-        }
-    }
-
-    tableSize++;
-    return table + index;
-}
-
-template <typename Key, size_t N>
-void ADS_set<Key, N>::split() {
-    Bucket* tmp = new Bucket[size()+1];
-    std::copy(table, table + size(), tmp);
-    delete[] table;
-    table = tmp;
-    ++bucketsSize;
-}
-
-template <typename Key, size_t N>
-void ADS_set<Key, N>::rehash(size_type index) {
-    bool rehashed = false;
-    for (size_t i = 0; i < N; ++i) {
-        if (hashIndex(table[index].bucketElements[i]) != nextIndex(table[index].bucketElements[i]) && table[index].bucketMode[i] == Mode::used) {
-            for (size_type j = 0; j < N && !rehashed; ++j) {
-                if (table[bucketsSize - 1].bucketMode[j] == Mode::free) {
-                    table[bucketsSize - 1].bucketElements[j] = table[index].bucketElements[i];
-                    table[bucketsSize - 1].bucketMode[j] = Mode::used;
-                    table[index].bucketMode[i] = Mode::free;
-
-                    rehashed = true;
-                }
-            }
-        }
-
-        rehashed = false;
-    }
-
-    if (table[index].overflowBucket) {
-        rehashOverflow(table[index].overflowBucket);
-    }
-}
-
-template <typename Key, size_t N>
-void ADS_set<Key, N>::rehashOverflow(OverflowBucket* overFlowBucket) {
-    size_t i = 0;
-    bool rehashed = false;
-    while(i < (OVERFLOW_BUCKET_SIZE)){
-        if(hashIndex(overFlowBucket->overflowElements[i]) != nextIndex(overFlowBucket->overflowElements[i]) && overFlowBucket->overflowMode[i] == Mode::used){
-            for(size_t j=0; j < N && !rehashed; ++j){
-                if(table[bucketsSize - 1].bucketMode[j] == Mode::free){
-                    table[bucketsSize - 1].bucketElements[j] = overFlowBucket->overflowElements[i];
-                    table[bucketsSize - 1].bucketMode[j] = Mode::used;
-
-                    overFlowBucket->overflowMode[i] = Mode::free;
-                    rehashed = true;
-                } else if(j == N - 1 && table[bucketsSize - 1].overflowBucket == nullptr){
-                    table[bucketsSize-1].overflowBucket = new OverflowBucket();
-                    addToOverflow(overFlowBucket->overflowElements[i], table[bucketsSize - 1].overflowBucket);
-
-                    overFlowBucket->overflowMode[i] = Mode::free;
-                    rehashed = true;
-                }else if(j == N-1 && table[bucketsSize - 1].overflowBucket != nullptr){
-                    addToOverflow(overFlowBucket->overflowElements[i], table[bucketsSize-1].overflowBucket);
-
-                    overFlowBucket->overflowMode[i] = Mode::free;
-                    rehashed = true;
-                }
-            }
-            rehashed = false;
-            ++i;
-        } else {
-            ++i;
-        }
-
-        if(overFlowBucket->nextOverflow){
-            overFlowBucket = overFlowBucket->nextOverflow;
-            i = 0;
-        }
-    }
-}
-
-template <typename Key, size_t N>
-typename ADS_set<Key,N>::size_type ADS_set<Key,N>::count(const key_type& key) const {
-    if (empty()) {
-        return 0;
-    }
-
-
-    size_type index = hashIndex(key);
-    if(index < nextToSplit) index = nextIndex(key);
-
-    for (size_type i{0}; i < N; ++i) {
-        if (table[index].bucketMode[i] == Mode::used) {
-            if (key_equal{}(key, table[index].bucketElements[i])) {
-                return 1;
-            }
-        }
-    }
-
-    if (table[index].overflowBucket) {
-        for (size_type i{0}; i < OVERFLOW_BUCKET_SIZE; ++i) {
-            if (key_equal{}(key, table[index].overflowBucket->overflowElements[i])) {
-                return 1;
-            }
-        }
-    }
-
-    return 0;
-}
-
-template <typename Key, size_t N>
-void ADS_set<Key,N>::insert(std::initializer_list<key_type> ilist) {
-    for (const auto &key: ilist) {
-        insertKey(key);
-    }
-}
-
-// Optimierungsmöglichkeiten
-template <typename Key, size_t N>
-template<typename InputIt> void ADS_set<Key, N>::insert(InputIt first, InputIt last) {
-    for (auto it = first; it != last ; ++it) {
-        insertKey(*it);
-    }
-}
-
-template <typename Key, size_t N>
-void ADS_set<Key, N>::addToOverflow(Key key, OverflowBucket *overflowBucket) {
-    size_t i = 0;
-    while(i < OVERFLOW_BUCKET_SIZE){
-        if(overflowBucket->overflowMode[i] == Mode::free){
-            overflowBucket->overflowElements[i] = key;
-            overflowBucket->overflowMode[i] = Mode::used;
-            break;
-        }else if(i == (N/2)-1 && !overflowBucket->nextOverflow){
-            overflowBucket->nextOverflow = new OverflowBucket();
-            overflowBucket = overflowBucket->nextOverflow;
-            split();
-            rehash(nextToSplit);
-
-            if (isSplittingComplete()) {
-                nextRound();
-            } else {
-                ++nextToSplit;
-            }
-
-            i = 0;
-        }else if(i == (N/2)-1 && overflowBucket->nextOverflow){
-            overflowBucket = overflowBucket->nextOverflow;
-            i = 0;
-        }else{
-            ++i;
-        }
-    }
-}
 template<typename Key, size_t N>
-void ADS_set<Key, N>::dump(std::ostream &o) const {
-    for (size_type i{0}; i < size(); ++i) {
-        table[i].dump(o);
-
-        o << "\n";
-    }
-}
+void swap(ADS_set<Key, N> &lhs, ADS_set<Key, N> &rhs) { lhs.swap(rhs); }
 
 #endif // ADS_SET_H

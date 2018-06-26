@@ -11,28 +11,28 @@
 int main() {
     std::cout << "Hello, World!" << std::endl;
 
-    std::vector<int> v( 123 );
+    std::vector<int> v( 100 );
     std::iota( std::begin( v ), std::end( v ), 1 );
-    ADS_set<int>* linearHashTable = new ADS_set<int>(std::begin(v), std::end(v));
 
-    linearHashTable->insertKey(16);
-    linearHashTable->insertKey(13);
-    linearHashTable->insertKey(21);
-    linearHashTable->insertKey(37);
-    linearHashTable->insertKey(11);
-    linearHashTable->insertKey(10);
+    for (int j = 0; j < 100; j++)
+    {
+
+        int i = rand() % 100;
+        v[j] = i; //I believe this should be array[j]=i
+        std::cout<<v[j]<<", ";
+    }
+
+    std::cout<<std::endl;
+
+    ADS_set<int>* linearHashTable = new ADS_set<int>(std::begin( v ), std::end( v ));
 
     linearHashTable->dump(std::cout);
 
     std::cout<<std::endl;
 
-    ADS_set<int>* tableCopy = new ADS_set<int>(*linearHashTable);
-
-    for (ADS_set<int>::Iterator it = tableCopy->begin(); it != tableCopy->end() ; it++) {
+    for (ADS_set<int>::Iterator it = linearHashTable->begin(); it != linearHashTable->end() ; it++) {
         std::cout<<*it<<", ";
     }
-
-
 
     return 0;
 }

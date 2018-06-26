@@ -1,9 +1,9 @@
 // Die Zurverfügungstellung des Programmes oder Teilen davon auf anderen Plattformen,
 // Repositories, etc. ist nicht zulässig.
 //
-// Last Modified: Sat 2018-05-19 23:05:06 (+0200)
+// Last Modified: Sun 2018-06-17 08:15:20 (+0200)
 
-#ifdef _WIN32
+#if _WIN32 || _WIN64
 #error btest does not work on windows.
 #endif
 
@@ -20,9 +20,44 @@
 #include <stdio.h>
 #include <unistd.h>
 
+// VG MACROS {{{
+// entnommen aus valgrind/valgrind.h zwecks vermeidung von dependency darauf.
+// gültig für amd64 linux, darwin und solaris, kein effekt auf anderen
+#define __SPECIAL_INSTRUCTION_PREAMBLE                            \
+                     "rolq $3,  %%rdi ; rolq $13, %%rdi\n\t"      \
+                     "rolq $61, %%rdi ; rolq $51, %%rdi\n\t"
+
+#define VALGRIND_DO_CLIENT_REQUEST_EXPR(                          \
+        _zzq_default, _zzq_request,                               \
+        _zzq_arg1, _zzq_arg2, _zzq_arg3, _zzq_arg4, _zzq_arg5)    \
+    __extension__                                                 \
+    ({ volatile unsigned long int _zzq_args[6];                   \
+    volatile unsigned long int _zzq_result;                       \
+    _zzq_args[0] = (unsigned long int)(_zzq_request);             \
+    _zzq_args[1] = (unsigned long int)(_zzq_arg1);                \
+    _zzq_args[2] = (unsigned long int)(_zzq_arg2);                \
+    _zzq_args[3] = (unsigned long int)(_zzq_arg3);                \
+    _zzq_args[4] = (unsigned long int)(_zzq_arg4);                \
+    _zzq_args[5] = (unsigned long int)(_zzq_arg5);                \
+    __asm__ volatile(__SPECIAL_INSTRUCTION_PREAMBLE               \
+                     /* %RDX = client_request ( %RAX ) */         \
+                     "xchgq %%rbx,%%rbx"                          \
+                     : "=d" (_zzq_result)                         \
+                     : "a" (&_zzq_args[0]), "0" (_zzq_default)    \
+                     : "cc", "memory"                             \
+                    );                                            \
+    _zzq_result;                                                  \
+    })
+
+#define RUNNING_ON_VALGRIND                                       \
+    (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* if not */,     \
+                                              0x1001,             \
+                                              0, 0, 0, 0, 0)      \
+// }}}
+
 #include "ADS_set.h"
 
-// #define PH2
+#define PH2
 
 bool const ISTTY = isatty(fileno(stderr)) && isatty(fileno(stdout));
 
@@ -101,9 +136,9 @@ namespace ads {
     template <class T>
     using set =
 #ifdef SIZE
-        ADS_set<T, SIZE>;
+    ADS_set<T, SIZE>;
 #else
-        ADS_set<T>;
+    ADS_set<T>;
 #endif
 }
 
@@ -176,9 +211,9 @@ void test_insert(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size_t max_va
 
         if(it_a.second != it_r.second) {
             std::cerr << RED("[insert] err: mismatch of insertion status\n"
-                      << "value " << v << " was" << (it_a.second ? "" : " not") << " inserted (returned "
-                      << std::boolalpha << it_a.second << "), but " << (it_r.second ? "should've" : "shouldn't have")
-                      << " been (should've returned " << it_r.second << " instead)\n");
+                                     << "value " << v << " was" << (it_a.second ? "" : " not") << " inserted (returned "
+                                     << std::boolalpha << it_a.second << "), but " << (it_r.second ? "should've" : "shouldn't have")
+                                     << " been (should've returned " << it_r.second << " instead)\n");
 
             dump_compare(a, r);
             std::abort();
@@ -186,7 +221,7 @@ void test_insert(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size_t max_va
 
         if(!it_equal(a, it_a.first, r, it_r.first)) {
             std::cerr << RED("[insert] err: returned iterator does not match expected value.\n"
-                      << "inserted value " << v << " but iterator points to " << it2str(a, it_a.first) << '\n');
+                                     << "inserted value " << v << " but iterator points to " << it2str(a, it_a.first) << '\n');
 
             dump_compare(a, r);
             std::abort();
@@ -246,8 +281,8 @@ void test_insert_erase(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size_t 
 
             if(it_a.second != it_r.second) {
                 std::cerr << RED("[insert_erase] err: mismatch of insertion status\n"
-                          << "value " << v << " was" << (it_a.second ? "" : " not") << " inserted, but "
-                          <<  (it_r.second ? "should've" : "shouldn't have") << " been\n");
+                                         << "value " << v << " was" << (it_a.second ? "" : " not") << " inserted, but "
+                                         <<  (it_r.second ? "should've" : "shouldn't have") << " been\n");
 
                 dump_compare(a, r);
                 std::abort();
@@ -255,7 +290,7 @@ void test_insert_erase(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size_t 
 
             if(!it_equal(a, it_a.first, r, it_r.first)) {
                 std::cerr << RED("[insert_erase] err: returned iterator does not match expected value.\n"
-                          << "inserted value " << v << " but iterator points to " << it2str(a, it_a.first) << '\n');
+                                         << "inserted value " << v << " but iterator points to " << it2str(a, it_a.first) << '\n');
 
                 dump_compare(a, r);
                 std::abort();
@@ -267,7 +302,7 @@ void test_insert_erase(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size_t 
 
             if(c_r != c_a) {
                 std::cerr << RED("[insert_erase] err: returned count for erase does not match expected value.\n"
-                          << "erasing value " << v << " returned " << c_a << ", but expected " << c_r << '\n');
+                                         << "erasing value " << v << " returned " << c_a << ", but expected " << c_r << '\n');
 
                 dump_compare(a, r);
                 std::abort();
@@ -309,7 +344,7 @@ void test_insert_it_erase(ads::set<val_t>& a, std::set<val_t>& r, size_t n, size
 
         if(c_r != c_a) {
             std::cerr << RED("[insert_it_erase] err: returned count for erase does not match expected value.\n"
-                      << "erasing value " << v << " returned " << c_a << ", but expected " << c_r << '\n');
+                                     << "erasing value " << v << " returned " << c_a << ", but expected " << c_r << '\n');
 
             dump_compare(a, r);
             std::abort();
@@ -329,7 +364,7 @@ void test_count(ads::set<val_t> const& a, std::set<val_t> const& r, size_t max_v
 
         if(c_a != c_r) {
             std::cerr << RED("[count] err: returned count does not match for value " << i << '\n'
-                      << "expected: " << c_r << " but got " << c_a << '\n');
+                                                                                     << "expected: " << c_r << " but got " << c_a << '\n');
 
             dump_compare(a, r);
             std::abort();
@@ -347,7 +382,7 @@ void test_find(ads::set<val_t> const& a, std::set<val_t> const& r, size_t max_va
 
         if(!it_equal(a, it_a, r, it_r)) {
             std::cerr << RED("[find] err: returned iterator does not match expected value.\n"
-                      << "value to find was " << i << " but iterator points to " << it2str(a, it_a) << '\n');
+                                     << "value to find was " << i << " but iterator points to " << it2str(a, it_a) << '\n');
 
             dump_compare(a, r);
             std::abort();
@@ -467,6 +502,7 @@ void test_range_constructor2() {
 void test_range_constructor3(size_t n, size_t max_value, RNG& gen) {
     std::cerr << "\n=== test_range_constructor3 ===\n";
     std::vector<val_t> vs{ 1, 2, 3 };
+    vs.reserve(n + 3);
 
     std::cerr << "constructing w/ [ ";
     for(auto const& v: vs) { std::cerr << v << ' '; }
@@ -494,7 +530,7 @@ void test_empty(ads::set<val_t> const& a, std::set<val_t> const& r) {
     std::cerr << "\n=== test_empty ===\n";
     if(a.empty() != r.empty()) {
         std::cerr << RED("[empty] err: container is" << (a.empty() ? "" : " not") << " empty, "
-                  << "but shouldn't be\n");
+                                                     << "but shouldn't be\n");
         dump_compare(a, r);
 
         std::abort();
@@ -542,7 +578,7 @@ void test_copy(ads::set<val_t> const& a, std::set<val_t> const& r) {
 
     if(a.size() != copy_a.size()) {
         std::cerr << RED("[copy] err: size after copying does not match.\n"
-                  << "size should be: " << a.size() << ", but is " << copy_a.size() << '\n');
+                                 << "size should be: " << a.size() << ", but is " << copy_a.size() << '\n');
 
         dump_compare(a, r);
         std::abort();
@@ -557,7 +593,7 @@ void test_copy(ads::set<val_t> const& a, std::set<val_t> const& r) {
     }
 
     if(a != copy_a) {
-        std::cerr << RED("[copy]: err: op!= returned true\n");
+        std::cerr << RED("[copy] err: op!= returned true\n");
 
         std::cerr << "\noriginal\n";
         dump_compare(a, r);
@@ -572,15 +608,13 @@ void test_copy(ads::set<val_t> const& a, std::set<val_t> const& r) {
         copy_a.insert(i); copy_r.insert(i);
     }
 
-    sanity_check("test_copy", copy_a, copy_r);
-
     for(auto const& v: copy_r) {
         size_t c_r = r.count(v);
         size_t c_a = a.count(v);
 
         if(c_r != c_a) {
             std::cerr << RED("[copy] err: counted " << c_a << " for value " << v
-                      << " in original container, but expected " << c_r << '\n');
+                                                    << " in original container, but expected " << c_r << '\n');
 
             std::cerr << "\norignal\n";
             dump_compare(a, r);
@@ -592,7 +626,7 @@ void test_copy(ads::set<val_t> const& a, std::set<val_t> const& r) {
     }
 
     if(a == copy_a) {
-        std::cerr << RED("[copy]: err: op== returned true\n");
+        std::cerr << RED("[copy] err: op== returned true\n");
 
         std::cerr << "\noriginal\n";
         dump_compare(a, r);
@@ -601,6 +635,8 @@ void test_copy(ads::set<val_t> const& a, std::set<val_t> const& r) {
         dump_compare(copy_a, copy_r);
         std::abort();
     }
+
+    sanity_check("test_copy", copy_a, copy_r);
 }
 
 void test_assign(ads::set<val_t> const& a, std::set<val_t> const& r) {
@@ -611,7 +647,7 @@ void test_assign(ads::set<val_t> const& a, std::set<val_t> const& r) {
 
     if(a.size() != b.size()) {
         std::cerr << RED("[copy] err: size after assigning does not match.\n"
-                  << "size should be: " << a.size() << ", but is " << b.size() << '\n');
+                                 << "size should be: " << a.size() << ", but is " << b.size() << '\n');
 
         dump_compare(a, r);
         std::abort();
@@ -630,7 +666,7 @@ void test_assign(ads::set<val_t> const& a, std::set<val_t> const& r) {
     }
 
     if(a != b) {
-        std::cerr << RED("[assign]: err: op!= returned true\n");
+        std::cerr << RED("[assign] err: op!= returned true\n");
 
         std::cerr << "\noriginal\n";
         dump_compare(a, r);
@@ -649,7 +685,7 @@ void test_assign_initlist(ads::set<val_t>& a, std::set<val_t>& r) {
 
     if(a.size() != r.size()) {
         std::cerr << RED("[assign_initlist] err: size after assigning does not match.\n"
-                  << "size should be: " << r.size() << ", but is " << a.size() << '\n');
+                                 << "size should be: " << r.size() << ", but is " << a.size() << '\n');
 
         dump_compare(a, r);
         std::abort();
@@ -664,7 +700,7 @@ void test_iter(ads::set<val_t> const& a, std::set<val_t> const& r) {
     size_t dist = std::distance(a.begin(), a.end());
     if(dist != r.size()) {
         std::cerr << RED("[iter] err: range size (distance between begin and end) is wrong.\n"
-                  << "expected: " << r.size() << ", but got: " << dist << '\n');
+                                 << "expected: " << r.size() << ", but got: " << dist << '\n');
         dump_compare(a, r);
         std::abort();
     }
@@ -694,6 +730,146 @@ void test_iter(ads::set<val_t> const& a, std::set<val_t> const& r) {
         dump_compare(a, r);
         std::abort();
     }
+
+    ads::set<val_t>::iterator i;
+    for(i = a.begin(); i != a.end(); ++i) {
+        if(!r.count(*i)) {
+            std::cerr << RED("[iter] err: encountered unexpected value while iterating (default iterator constructor): "
+                                     << *i << " should not be part of container!\n");
+
+            dump_compare(a, r);
+            std::abort();
+        }
+    }
+}
+
+void test_insert_iter(ads::set<val_t>& a, std::set<val_t> const& r) {
+    std::cerr << "\n=== test_insert_iter ===\n";
+
+    std::vector<val_t> vs; vs.reserve(r.size());
+    for(auto const& v: a) { vs.push_back(v); }
+
+    for(auto it = vs.begin(); it != vs.end(); ++it) {
+        std::cerr << "in " << *it << '\n';
+        auto it_a = a.insert(*it);
+
+        if(it_a.second) {
+            std::cerr << RED("[insert_iter] double insertion succeeded. returned 'true' for value"
+                                     << *it << ", which was already part of container.\n");
+
+            dump_compare(a, r);
+            std::abort();
+        }
+
+        bool eq_range_left  = std::equal(vs.begin(), it, a.begin(), it_a.first, std::equal_to<val_t>{});
+        bool eq_range_left_ = std::equal(a.begin(), it_a.first, vs.begin(), it, std::equal_to<val_t>{});
+
+        bool eq_range_right  = std::equal(it, vs.end(), it_a.first, a.end(), std::equal_to<val_t>{});
+        bool eq_range_right_ = std::equal(it_a.first, a.end(), it, vs.end(), std::equal_to<val_t>{});
+
+        if(!eq_range_left || !eq_range_left_) {
+            std::cerr << RED("[insert_iter] range spanned from begin to iterator returned by insert does not match subset of original range.\n"
+                                     << "value was " << *it << "\n\n") << "original extracted range:\n\n";
+
+            for(auto const& v: vs) { std::cerr << v << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nsubset of range that was looked at:\n\n";
+            for(auto i = vs.begin(); i != it; ++i) { std::cerr << *i << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nrange spanned from begin to insert iterator:\n\n";
+            for(auto i = a.begin(); i != it_a.first; ++i) { std::cerr << *i << ' '; }
+            std::cerr << "\n\n";
+
+            dump_compare(a, r);
+            std::abort();
+        }
+
+        if(!eq_range_right || !eq_range_right_) {
+            std::cerr << RED("[insert_iter] range spanned by iterator returned by insert to end does not match subset of original range.\n"
+                                     << "value was " << *it << "\n\n") << "original extracted range:\n\n";
+
+            for(auto const& v: vs) { std::cerr << v << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nsubset of range that was looked at:\n\n";
+            for(auto i = it; i != vs.end(); ++i) { std::cerr << *i << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nrange spanned by insert iterator to end:\n\n";
+            for(auto i = it_a.first; i != a.end(); ++i) { std::cerr << *i << ' '; }
+            std::cerr << "\n\n";
+
+            dump_compare(a, r);
+            std::abort();
+        }
+    }
+
+    sanity_check("insert_iter", a, r);
+}
+
+void test_find_iter(ads::set<val_t> const& a, std::set<val_t> const& r) {
+    std::cerr << "\n=== test_find_iter ===\n";
+
+    std::vector<val_t> vs; vs.reserve(r.size());
+    for(auto const& v: a) { vs.push_back(v); }
+
+    for(auto it = vs.begin(); it != vs.end(); ++it) {
+        std::cerr << "fi " << *it << '\n';
+        auto it_a = a.find(*it);
+
+        if(it_a == a.end() || !std::equal_to<val_t>{}(*it, *it_a)) {
+            std::cerr << RED("[find_iter] find failed. points to " << it2str(a, it_a) << " instead.\n");
+
+            dump_compare(a, r);
+            std::abort();
+        }
+
+        bool eq_range_left  = std::equal(vs.begin(), it, a.begin(), it_a, std::equal_to<val_t>{});
+        bool eq_range_left_ = std::equal(a.begin(), it_a, vs.begin(), it, std::equal_to<val_t>{});
+
+        bool eq_range_right  = std::equal(it, vs.end(), it_a, a.end(), std::equal_to<val_t>{});
+        bool eq_range_right_ = std::equal(it_a, a.end(), it, vs.end(), std::equal_to<val_t>{});
+
+        if(!eq_range_left || !eq_range_left_) {
+            std::cerr << RED("[find_iter] range spanned from begin to iterator returned by find does not match subset of original range.\n"
+                                     << "value was " << *it << "\n\n") << "original extracted range:\n\n";
+
+            for(auto const& v: vs) { std::cerr << v << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nsubset of range that was looked at:\n\n";
+            for(auto i = vs.begin(); i != it; ++i) { std::cerr << *i << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nrange spanned from begin to find iterator:\n\n";
+            for(auto i = a.begin(); i != it_a; ++i) { std::cerr << *i << ' '; }
+            std::cerr << "\n\n";
+
+            dump_compare(a, r);
+            std::abort();
+        }
+
+        if(!eq_range_right || !eq_range_right_) {
+            std::cerr << RED("[find_iter] range spanned by iterator returned by find to end does not match subset of original range.\n"
+                                     << "value was " << *it << "\n\n") << "original extracted range:\n\n";
+
+            for(auto const& v: vs) { std::cerr << v << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nsubset of range that was looked at:\n\n";
+            for(auto i = it; i != vs.end(); ++i) { std::cerr << *i << ' '; }
+            std::cerr << '\n';
+
+            std::cerr << "\nrange spanned by find iterator to end:\n\n";
+            for(auto i = it_a; i != a.end(); ++i) { std::cerr << *i << ' '; }
+            std::cerr << "\n\n";
+
+            dump_compare(a, r);
+            std::abort();
+        }
+    }
 }
 
 void test_swap_insert_erase(ads::set<val_t>& a1, std::set<val_t>& r1, ads::set<val_t>& a2, std::set<val_t>& r2, size_t n, size_t max_value, RNG& gen) {
@@ -720,7 +896,7 @@ void test_equality(ads::set<val_t> const& a1, std::set<val_t> const& r1, ads::se
 
     if(eq_a != eq_r) {
         std::cerr << RED("[equality] err: equality mismatch. expected sets to be "
-                  << (eq_r ? "equal" : "inequal") << ", but op== returned " << std::boolalpha << eq_a << '\n');
+                                 << (eq_r ? "equal" : "inequal") << ", but op== returned " << std::boolalpha << eq_a << '\n');
 
         std::cerr << "\na1\n";
         dump_compare(a1, r1);
@@ -738,7 +914,7 @@ void test_inequality(ads::set<val_t> const& a1, std::set<val_t> const& r1, ads::
 
     if(ineq_a != ineq_r) {
         std::cerr << RED("[inequality] err: equality mismatch. expected sets to be "
-                  << (ineq_r ? "inequal" : "equal") << ", but op== returned " << std::boolalpha << ineq_a << '\n');
+                                 << (ineq_r ? "inequal" : "equal") << ", but op!= returned " << std::boolalpha << ineq_a << '\n');
 
         std::cerr << "\na1\n";
         dump_compare(a1, r1);
@@ -902,6 +1078,52 @@ void test_all_ph2(size_t n, size_t max_value, RNG& gen) {
 
         std::cerr << "\na1";
         test_insert_erase(a1, r1, n, max_value, gen);
+        test_insert_erase(a1, r1, n, max_value, gen);
+        test_clear(a1, r1);
+
+        test_insert_it_erase(a1, r1, n, max_value, gen);
+
+        test_insert_erase(a1, r1, n, max_value, gen);
+        test_insert_erase(a1, r1, n, max_value, gen);
+        test_iter(a1, r1);
+
+        test_copy(a1, r1);
+        test_iter(a1, r1);
+        test_insert_iter(a1, r1);
+        test_find_iter(a1, r1);
+
+        ads::set<val_t> a2;
+        std::set<val_t> r2;
+
+        std::cerr << "\na2";
+        test_insert_it_erase(a2, r2, n, max_value, gen);
+        test_insert_erase(a2, r2, n, max_value, gen);
+
+        test_insert(a2, r2, n, max_value, gen);
+        test_insert(a2, r2, n, max_value, gen);
+
+        test_swap_insert_erase(a1, r1, a2, r2, n, max_value, gen);
+
+        test_insert_erase(a1, r1, n, max_value, gen);
+        test_insert_erase(a2, r2, n, max_value, gen);
+
+        test_iter(a1, r1);
+        test_iter(a2, r2);
+
+        test_insert_iter(a1, r1);
+        test_insert_iter(a2, r2);
+
+        test_find_iter(a1, r1);
+        test_find_iter(a2, r2);
+    }
+
+    {
+        std::cerr << "\n----\n";
+        ads::set<val_t> a1;
+        std::set<val_t> r1;
+
+        std::cerr << "\na1";
+        test_insert_erase(a1, r1, n, max_value, gen);
 
         ads::set<val_t> a2;
         std::set<val_t> r2;
@@ -920,7 +1142,7 @@ void test_all_ph2(size_t n, size_t max_value, RNG& gen) {
 void do_stresstest1(RNG* const gen) {
     std::cerr << "\n=== stresstest1 " << (gen ? "(randomized) " : "") << "===\n";
 
-    size_t const n = 1000000;
+    size_t const n = 1'000'000;
     std::vector<val_t> vs(n);
     std::iota(vs.begin(), vs.end(), 0);
 
@@ -1028,6 +1250,32 @@ void do_stresstest2(RNG* const gen) {
     }
 
     std::cerr << "elapsed_find   = " << elapsed_find  << " ms\n";
+
+    if(!gen) {
+        double elapsed_iter;
+        size_t i = 0;
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            for(auto it = a.begin(); it != a.end(); ++it, ++i) {
+                auto it_f = a.find(*it);
+
+                if(!it_equal(a, it, a, it_f)) {
+                    std::cerr << RED("[stresstest2] err: iterator from iterator loop does not match find iterator\n");
+                    std::abort();
+                }
+            }
+            auto end = std::chrono::high_resolution_clock::now();
+
+            elapsed_iter = std::chrono::duration<double, std::milli>(end - start).count();
+        }
+
+        if(i != n) {
+            std::cerr << RED("[stresstest2] err: iterator loop ran " << i << " times instead of the expected " << n << " times.\n");
+            std::abort();
+        }
+        std::cerr << "elapsed_iter   = " << elapsed_iter << " ms\n";
+    }
+
     if(gen) { std::shuffle(vs.begin(), vs.end(), *gen); }
 
     double elapsed_erase;
@@ -1190,7 +1438,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    RNG gen{ s };
+    std::mt19937_64 gen{ s };
     if(only_benchmark) {
         stresstest();
         stresstest(&gen);
@@ -1222,8 +1470,12 @@ int main(int argc, char** argv) {
         gen.seed(s);
     }
 
-    stresstest();
-    stresstest(&gen);
+    if(RUNNING_ON_VALGRIND) {
+        std::cerr << CYAN("NOTE: ") << "stresstest disabled because program is running under valgrind.\n";
+    } else {
+        stresstest();
+        stresstest(&gen);
+    }
 
     std::cout << GREEN("\nOK\n");
 }
