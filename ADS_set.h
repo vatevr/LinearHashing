@@ -149,16 +149,28 @@ private:
     }
 
     void rehash(size_t index) {
-        // we always rehash last splitted position;
         Bucket* bucket = &table[index];
+
+        size_t address = index + (1 << d);
+        Bucket* bucketToStore = &table[address];
+        size_t bucketToStoreIndex = 0;
+
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
                 if (bucket->elements[i].used && bucketAddress(bucket->elements[i].element) != index) {
                     key_type key = bucket->elements[i].element;
                     bucket->elements[i].used = false;
-                    --tableSize;
 
-                    insertUnchecked(key, false);
+
+                    if (bucketToStoreIndex == N) {
+                        bucketToStoreIndex = 0;
+                        bucketToStore->overflowBucket = new Bucket();
+                        bucketToStore = bucketToStore->overflowBucket;
+                    }
+
+                    bucketToStore->elements[bucketToStoreIndex].element = key;
+                    bucketToStore->elements[bucketToStoreIndex].used = true;
+                    ++bucketToStoreIndex;
                 }
             }
 
@@ -193,19 +205,18 @@ private:
             }
         }
 
-        tableSize++;
+        ++tableSize;
 
         if (toRehash && toSplit) {
             split();
-            size_t indexToRehash = nextToSplit;
-            ++nextToSplit;
-            // Splitting einmal durch
-            if (pow(2.0, d) == nextToSplit) {
-                d++;
+
+            rehash(nextToSplit++);
+
+            // Splitting is through
+            if (1 << d == nextToSplit) {
+                ++d;
                 nextToSplit = 0;
             }
-            // nextToSplit already points to the next, we need to rehash the previous one
-            rehash(indexToRehash);
         }
     }
 
