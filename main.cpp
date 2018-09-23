@@ -1362,7 +1362,7 @@ void stresstest(RNG* const gen = nullptr) {
 #define T 1
 #endif
 
-int main(int argc, char** argv) {
+int btest_main(int argc, char** argv) {
     size_t n = N;
     size_t m = M;
     size_t o = O;
@@ -1478,4 +1478,8 @@ int main(int argc, char** argv) {
     }
 
     std::cout << GREEN("\nOK\n");
+}
+
+int main(int argc, char** argv) {
+    btest_main(argc, argv);
 }

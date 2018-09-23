@@ -111,17 +111,19 @@ private:
         };
     };
 
-    // Initial size of table 2 ^ d
-    size_t nextToSplit{0}, tableSize{0}, d{2}, maxSize;
-    // Max load factor of 70%
-    float maxLoadFactor{0.7};
     Bucket* table{nullptr};
+    size_t tableSize_;
+    size_t size_{0};
+    size_t capacity_{0};
+    size_t d_{2};
+    size_t nextToSplit_{0};
+    float maxLoadFactor_{0.7};
 
     using bucketIterator = PrivateBucketIterator;
 
     void split() {
-        Bucket* tmp = new Bucket[maxSize + 1];
-        for (size_t i = 0; i < maxSize; ++i) {
+        Bucket* tmp = new Bucket[tableSize_ + 1];
+        for (size_t i = 0; i < tableSize_; ++i) {
             std::swap(tmp[i].keys, table[i].keys);
             std::swap(tmp[i].overflowBucket, table[i].overflowBucket);
             /* key ---> hash ---> 0
@@ -134,21 +136,22 @@ private:
         }
         delete[] table;
         table = tmp;
-        ++maxSize;
+        ++tableSize_;
+        capacity_ += N;
     }
 
     size_t bucketAddress(const Key& key) const {
         size_t n = hasher{}(key);
-        if (n % (size_t)(1 << d) >= nextToSplit)
-            return n % (size_t)(1 << d);
+        if (n % (size_t)(1 << d_) >= nextToSplit_)
+            return n % (size_t)(1 << d_);
         else
-            return n % (size_t)(1 << (d + 1));
+            return n % (size_t)(1 << (d_ + 1));
     }
 
     void rehash(size_t index) {
         Bucket* bucket = &table[index];
 
-        size_t address = index + (1 << d);
+        size_t address = index + (1 << d_);
         Bucket* splittedBucketToStore = &table[address];
         size_t splittedBucketIndex = 0;
         Bucket* currentBucketToStore = &table[index];
@@ -171,6 +174,7 @@ private:
                         splittedBucketIndex = 0;
                         splittedBucketToStore->overflowBucket = new Bucket();
                         splittedBucketToStore = splittedBucketToStore->overflowBucket;
+                        capacity_ += N;
                     }
                     std::swap(bucket->keys[i], splittedBucketToStore->keys[splittedBucketIndex++]);
                 }
@@ -179,8 +183,15 @@ private:
             bucket = bucket->overflowBucket;
         }
         if (currentBucketToStore->overflowBucket != nullptr) {
+            size_t count{0};
+            Bucket* t = currentBucketToStore->overflowBucket;
+            while(t != nullptr) {
+                ++count;
+                t = t->overflowBucket;
+            }
             delete currentBucketToStore->overflowBucket;
             currentBucketToStore->overflowBucket = nullptr;
+            capacity_ = capacity_ - (count * N);
         }
     }
 
@@ -202,6 +213,7 @@ private:
                 if (i == N - 1) {
                     if (!bucket->overflowBucket) {
                         bucket->overflowBucket = new Bucket();
+                        capacity_ += N;
                         toRehash = true;
                     }
 
@@ -210,25 +222,26 @@ private:
             }
         }
 
-        ++tableSize;
+        ++size_;
 
         if (toRehash && toSplit) {
             split();
 
-            rehash(nextToSplit++);
+            rehash(nextToSplit_++);
 
             // Splitting is through
-            if (1 << d == nextToSplit) {
-                ++d;
-                nextToSplit = 0;
+            if (1 << d_ == nextToSplit_) {
+                ++d_;
+                nextToSplit_ = 0;
             }
         }
     }
 
 public:
     ADS_set() {
-        maxSize = (size_t)(1<<d);
-        table = new Bucket[maxSize];
+        tableSize_ = (size_t)(1<<d_);
+        table = new Bucket[tableSize_];
+        capacity_ += tableSize_ * N;
     }
 
     ADS_set(std::initializer_list<key_type> ilist): ADS_set{} {
@@ -258,9 +271,9 @@ public:
         return *this;
     }
 
-    size_type size() const { return tableSize; }
+    size_type size() const { return size_; }
 
-    bool empty() const { return !tableSize;};
+    bool empty() const { return !size_;};
 
     // Wie oft gegebene Wert gespeichert ist
     size_type count(const key_type& key) const {
@@ -311,11 +324,12 @@ public:
 
     void swap(ADS_set &other) {
         std::swap(table, other.table);
-        std::swap(d, other.d);
-        std::swap(nextToSplit, other.nextToSplit);
-        std::swap(tableSize, other.tableSize);
-        std::swap(maxSize, other.maxSize);
-        std::swap(maxLoadFactor, other.maxLoadFactor);
+        std::swap(d_, other.d_);
+        std::swap(nextToSplit_, other.nextToSplit_);
+        std::swap(size_, other.size_);
+        std::swap(tableSize_, other.tableSize_);
+        std::swap(capacity_, other.capacity_);
+        std::swap(maxLoadFactor_, other.maxLoadFactor_);
     }
 
     void insert(std::initializer_list<key_type> ilist) {
@@ -350,7 +364,7 @@ public:
                 if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
                     delete bucket->keys[i];
                     bucket->keys[i] = nullptr;
-                    --tableSize;
+                    --size_;
                     return 1;
                 }
             }
@@ -361,13 +375,13 @@ public:
         return 0;
     }
 
-    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table, index, maxSize); }
-    bucketIterator bucketEnd() const { return bucketIterator(this->table, SIZE_INVALID, maxSize); }
+    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table, index, tableSize_); }
+    bucketIterator bucketEnd() const { return bucketIterator(this->table, SIZE_INVALID, tableSize_); }
     const_iterator begin() const { return const_iterator{bucketBegin(0), bucketEnd(), table, 0}; };
     const_iterator end() const { return const_iterator{bucketEnd(), bucketEnd(), nullptr, SIZE_INVALID}; };
 
     void dump(std::ostream &o = std::cerr) const {
-        for (size_type i{0}; i < maxSize; ++i) {
+        for (size_type i{0}; i < tableSize_; ++i) {
             Bucket* bucket = &table[i];
 
             while (bucket != nullptr) {
@@ -384,7 +398,7 @@ public:
     };
 
     friend bool operator==(const ADS_set& lhs, const ADS_set& rhs) {
-        if (lhs.tableSize != rhs.tableSize) return false;
+        if (lhs.size_ != rhs.size_) return false;
 
         for (const_iterator it = rhs.begin(); it != rhs.end(); ++it) {
             if (lhs.find(*it) == lhs.end()) return false;
