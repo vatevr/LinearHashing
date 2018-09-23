@@ -111,34 +111,40 @@ private:
         };
     };
 
-    Bucket* table{nullptr};
+    Bucket* table_{nullptr};
     size_t tableSize_;
     size_t size_{0};
     size_t capacity_{0};
     size_t d_{2};
     size_t nextToSplit_{0};
-    float maxLoadFactor_{0.7};
+    float maxLoadFactor_{0.9 };
 
     using bucketIterator = PrivateBucketIterator;
 
     void split() {
         Bucket* tmp = new Bucket[tableSize_ + 1];
         for (size_t i = 0; i < tableSize_; ++i) {
-            std::swap(tmp[i].keys, table[i].keys);
-            std::swap(tmp[i].overflowBucket, table[i].overflowBucket);
-            /* key ---> hash ---> 0
-             * 0 x-- -> null
-             * 1 xxx -> x---
-             * 2 --- -> null
-             * 3 --- -> null
-             * 4 x-- -> null
-             */
+            std::swap(tmp[i].keys, table_[i].keys);
+            std::swap(tmp[i].overflowBucket, table_[i].overflowBucket);
         }
-        delete[] table;
-        table = tmp;
+        delete[] table_;
+        table_ = tmp;
         ++tableSize_;
         capacity_ += N;
     }
+
+    void reserve(size_t n) {
+        if (n > capacity_ * maxLoadFactor_) {
+            split();
+            rehash(nextToSplit_++);
+            // Splitting is through
+            if (1 << d_ == nextToSplit_) {
+                ++d_;
+                nextToSplit_ = 0;
+            }
+        }
+    }
+
 
     size_t bucketAddress(const Key& key) const {
         size_t n = hasher{}(key);
@@ -149,12 +155,12 @@ private:
     }
 
     void rehash(size_t index) {
-        Bucket* bucket = &table[index];
+        Bucket* bucket = &table_[index];
 
         size_t address = index + (1 << d_);
-        Bucket* splittedBucketToStore = &table[address];
+        Bucket* splittedBucketToStore = &table_[address];
         size_t splittedBucketIndex = 0;
-        Bucket* currentBucketToStore = &table[index];
+        Bucket* currentBucketToStore = &table_[index];
         size_t currentBucketIndex = 0;
 
         while (bucket) {
@@ -195,10 +201,9 @@ private:
         }
     }
 
-    void insertUnchecked(const key_type &key, bool toSplit = true) {
+    void insertUnchecked(const key_type &key) {
         size_type address = bucketAddress(key);
-        Bucket* bucket = &table[address];
-        bool toRehash = false;
+        Bucket* bucket = &table_[address];
         bool inserted = false;
 
         while(bucket && !inserted) {
@@ -214,7 +219,6 @@ private:
                     if (!bucket->overflowBucket) {
                         bucket->overflowBucket = new Bucket();
                         capacity_ += N;
-                        toRehash = true;
                     }
 
                     bucket = bucket->overflowBucket;
@@ -223,24 +227,12 @@ private:
         }
 
         ++size_;
-
-        if (toRehash && toSplit) {
-            split();
-
-            rehash(nextToSplit_++);
-
-            // Splitting is through
-            if (1 << d_ == nextToSplit_) {
-                ++d_;
-                nextToSplit_ = 0;
-            }
-        }
     }
 
 public:
     ADS_set() {
         tableSize_ = (size_t)(1<<d_);
-        table = new Bucket[tableSize_];
+        table_ = new Bucket[tableSize_];
         capacity_ += tableSize_ * N;
     }
 
@@ -256,7 +248,7 @@ public:
     }
 
     ~ADS_set() {
-        delete[] table;
+        delete[] table_;
     }
 
     ADS_set &operator=(const ADS_set &other) {
@@ -284,7 +276,7 @@ public:
 
         size_type index = bucketAddress(key);
 
-        Bucket* bucket = &table[index];
+        Bucket* bucket = &table_[index];
 
         while (bucket) {
             for (size_type i{0}; i < N; ++i) {
@@ -303,7 +295,7 @@ public:
 
     iterator find(const key_type& key) const {
         size_t index = bucketAddress(key);
-        Bucket* bucket = &table[index];
+        Bucket* bucket = &table_[index];
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
                 if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
@@ -323,7 +315,7 @@ public:
     }
 
     void swap(ADS_set &other) {
-        std::swap(table, other.table);
+        std::swap(table_, other.table_);
         std::swap(d_, other.d_);
         std::swap(nextToSplit_, other.nextToSplit_);
         std::swap(size_, other.size_);
@@ -334,7 +326,10 @@ public:
 
     void insert(std::initializer_list<key_type> ilist) {
         for (const auto &key: ilist) {
-            insert(key);
+            if (count(key) == 0) {
+                reserve(size_ + 1);
+                insertUnchecked(key);
+            }
         }
     }
 
@@ -344,6 +339,7 @@ public:
             return {it, false};
         }
 
+        reserve(size_ + 1);
         insertUnchecked(key);
         return {iterator{find(key)},true};
     }
@@ -351,13 +347,16 @@ public:
     template<typename InputIt>
     void insert(InputIt first, InputIt last) {
         for (auto it = first; it != last ; ++it) {
-            insert(*it);
+            if (count(*it) == 0) {
+                reserve(size_ + 1);
+                insertUnchecked(*it);
+            }
         }
     }
 
     size_type erase(const key_type &key) {
         size_t index = bucketAddress(key);
-        Bucket* bucket = &table[index];
+        Bucket* bucket = &table_[index];
 
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
@@ -375,14 +374,22 @@ public:
         return 0;
     }
 
-    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table, index, tableSize_); }
-    bucketIterator bucketEnd() const { return bucketIterator(this->table, SIZE_INVALID, tableSize_); }
-    const_iterator begin() const { return const_iterator{bucketBegin(0), bucketEnd(), table, 0}; };
+    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table_, index, tableSize_); }
+    bucketIterator bucketEnd() const { return bucketIterator(this->table_, SIZE_INVALID, tableSize_); }
+    const_iterator begin() const {
+        iterator a{bucketBegin(0), bucketEnd(), table_, 0};
+
+        if (table_[0].keys[0] == nullptr) {
+            a.advanceToNext();
+        }
+
+        return a;
+    }
     const_iterator end() const { return const_iterator{bucketEnd(), bucketEnd(), nullptr, SIZE_INVALID}; };
 
     void dump(std::ostream &o = std::cerr) const {
-        for (size_type i{0}; i < tableSize_; ++i) {
-            Bucket* bucket = &table[i];
+        for (size_t i = 0; i < tableSize_; ++i) {
+            Bucket* bucket = &table_[i];
 
             while (bucket != nullptr) {
                 for (size_type j{0}; j < N; ++j) {
@@ -419,34 +426,43 @@ private:
     ADS_set<Key, N>::Bucket* position_;
     size_t index_;
 
+public:
     void advanceToNext() {
-        if (index_ == N) {
-            position_ = position_->overflowBucket;
-            index_ = 0;
+        for (size_t i = index_ + 1; i < N; ++i) {
+            if (position_->keys[i] != nullptr) {
+                index_ = i;
+                return;
+            }
         }
 
-        if (position_) {
+        position_ = position_->overflowBucket;
+        while (position_) {
+            index_ = 0;
             for (size_t i = index_; i < N; ++i) {
                 if (position_->keys[i] != nullptr) {
                     index_ = i;
                     return;
                 }
             }
-
             position_ = position_->overflowBucket;
-            index_ = 0;
-            advanceToNext();
-        } else {
-            if (++beginIterator_ != endIterator_) {
-                position_ = &(*beginIterator_);
+        }
+
+        for (++beginIterator_; beginIterator_ != endIterator_; ++beginIterator_) {
+            position_ = &(*beginIterator_);
+            while (position_) {
                 index_ = 0;
-                advanceToNext();
-            } else {
-                index_ = (size_t)-1;
+                for (size_t i = index_; i < N; ++i) {
+                    if (position_->keys[i] != nullptr) {
+                        index_ = i;
+                        return;
+                    }
+                }
+                position_ = position_->overflowBucket;
             }
         }
+
+        index_ = (size_t)-1;
     }
-public:
     using value_type = Key;
     using difference_type = std::ptrdiff_t;
     using reference = const value_type &;
@@ -455,17 +471,22 @@ public:
     using BucketIterator = ADS_set<Key, N>::PrivateBucketIterator;
     using Bucket = ADS_set<Key, N>::Bucket;
 
-    Iterator(): beginIterator_{BucketIterator(nullptr, 0, 0)}, endIterator_{BucketIterator(nullptr, 0, 0)}, position_{
-            nullptr}, index_{(size_t)-1} {
+    Iterator()
+        : beginIterator_{BucketIterator(nullptr, 0, 0)}
+        , endIterator_{BucketIterator(nullptr, 0, 0)}
+        , position_{nullptr}
+        , index_{(size_t)-1}
+    {
 
     }
 
     explicit Iterator(BucketIterator beginIt, BucketIterator endIt, Bucket* position, size_t index)
-            : beginIterator_{beginIt}, endIterator_{endIt}, position_{position}, index_{index}
+            : beginIterator_{beginIt}
+            , endIterator_{endIt}
+            , position_{position}
+            , index_{index}
     {
-        if(beginIterator_ != endIterator_) {
-            advanceToNext();
-        }
+
     }
 
     reference operator*() const
@@ -486,7 +507,6 @@ public:
     };
 
     Iterator &operator++() {
-        ++index_;
         advanceToNext();
         return *this;
     }
