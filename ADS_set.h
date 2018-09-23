@@ -201,18 +201,17 @@ private:
         }
     }
 
-    void insertUnchecked(const key_type &key) {
+    iterator insertUnchecked(const key_type &key) {
         size_type address = bucketAddress(key);
         Bucket* bucket = &table_[address];
-        bool inserted = false;
 
-        while(bucket && !inserted) {
+        while(bucket) {
             for (size_t i = 0; i < N; ++i) {
                 // Should at some point reach here
                 if (bucket->keys[i] == nullptr) {
                     bucket->keys[i] = new key_type(key);
-                    inserted = true;
-                    break;
+                    ++size_;
+                    return iterator{bucketBegin(address), bucketEnd(), bucket, i};
                 }
 
                 if (i == N - 1) {
@@ -226,7 +225,7 @@ private:
             }
         }
 
-        ++size_;
+        return end();
     }
 
 public:
@@ -340,8 +339,7 @@ public:
         }
 
         reserve(size_ + 1);
-        insertUnchecked(key);
-        return {iterator{find(key)},true};
+        return {insertUnchecked(key), true};
     }
 
     template<typename InputIt>
