@@ -24,24 +24,21 @@ public:
     using hasher = std::hash<key_type>;        // Hashing
     static const size_t SIZE_INVALID = (size_t) -1;
 private:
-    struct Element {
-        Key element;
-        bool used = false;
-    };
-
     struct Bucket {
-        Element *elements;
-        Bucket *overflowBucket{nullptr};
+        // to have keys initialized to nullptrs
+        Key* keys[N] = {};
+        Bucket* overflowBucket{nullptr};
 
-        Bucket() {
-            elements = new Element[N];
-        }
+        Bucket() {}
 
         ~Bucket() {
-            delete[] elements;
+            for(size_t i = 0; i < N; ++i) {
+                delete keys[i];
+            }
 
-            if (overflowBucket) {
+            if (nullptr != overflowBucket) {
                 delete overflowBucket;
+                overflowBucket = nullptr;
             }
         }
     };
@@ -125,7 +122,7 @@ private:
     void split() {
         Bucket* tmp = new Bucket[maxSize + 1];
         for (size_t i = 0; i < maxSize; ++i) {
-            std::swap(tmp[i].elements, table[i].elements);
+            std::swap(tmp[i].keys, table[i].keys);
             std::swap(tmp[i].overflowBucket, table[i].overflowBucket);
             /* key ---> hash ---> 0
              * 0 x-- -> null
@@ -152,29 +149,38 @@ private:
         Bucket* bucket = &table[index];
 
         size_t address = index + (1 << d);
-        Bucket* bucketToStore = &table[address];
-        size_t bucketToStoreIndex = 0;
+        Bucket* splittedBucketToStore = &table[address];
+        size_t splittedBucketIndex = 0;
+        Bucket* currentBucketToStore = &table[index];
+        size_t currentBucketIndex = 0;
 
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
-                if (bucket->elements[i].used && bucketAddress(bucket->elements[i].element) != index) {
-                    key_type key = bucket->elements[i].element;
-                    bucket->elements[i].used = false;
-
-
-                    if (bucketToStoreIndex == N) {
-                        bucketToStoreIndex = 0;
-                        bucketToStore->overflowBucket = new Bucket();
-                        bucketToStore = bucketToStore->overflowBucket;
+                if (nullptr == bucket->keys[i]){
+                    continue;
+                }
+                if (bucketAddress(*(bucket->keys[i])) == index) {
+                    if (currentBucketIndex == N) {
+                        currentBucketIndex = 0;
+                        currentBucketToStore = currentBucketToStore->overflowBucket;
                     }
 
-                    bucketToStore->elements[bucketToStoreIndex].element = key;
-                    bucketToStore->elements[bucketToStoreIndex].used = true;
-                    ++bucketToStoreIndex;
+                    std::swap(bucket->keys[i], currentBucketToStore->keys[currentBucketIndex++]);
+                } else {
+                    if (splittedBucketIndex == N) {
+                        splittedBucketIndex = 0;
+                        splittedBucketToStore->overflowBucket = new Bucket();
+                        splittedBucketToStore = splittedBucketToStore->overflowBucket;
+                    }
+                    std::swap(bucket->keys[i], splittedBucketToStore->keys[splittedBucketIndex++]);
                 }
             }
 
             bucket = bucket->overflowBucket;
+        }
+        if (currentBucketToStore->overflowBucket != nullptr) {
+            delete currentBucketToStore->overflowBucket;
+            currentBucketToStore->overflowBucket = nullptr;
         }
     }
 
@@ -187,9 +193,8 @@ private:
         while(bucket && !inserted) {
             for (size_t i = 0; i < N; ++i) {
                 // Should at some point reach here
-                if (!bucket->elements[i].used) {
-                    bucket->elements[i].element = key;
-                    bucket->elements[i].used = true;
+                if (bucket->keys[i] == nullptr) {
+                    bucket->keys[i] = new key_type(key);
                     inserted = true;
                     break;
                 }
@@ -270,8 +275,8 @@ public:
 
         while (bucket) {
             for (size_type i{0}; i < N; ++i) {
-                if (bucket->elements[i].used) {
-                    if (key_equal{}(key, bucket->elements[i].element)) {
+                if (bucket->keys[i] != nullptr) {
+                    if (key_equal{}(key, *(bucket->keys[i]))) {
                         return 1;
                     }
                 }
@@ -288,7 +293,7 @@ public:
         Bucket* bucket = &table[index];
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
-                if (bucket->elements[i].used && key_equal{}(bucket->elements[i].element, key)) {
+                if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
                     return iterator{bucketBegin(index), bucketEnd(), bucket, i};
                 }
             }
@@ -342,8 +347,9 @@ public:
 
         while (bucket) {
             for (size_t i = 0; i < N; ++i) {
-                if (bucket->elements[i].used && key_equal{}(bucket->elements[i].element, key)) {
-                    bucket->elements[i].used = false;
+                if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
+                    delete bucket->keys[i];
+                    bucket->keys[i] = nullptr;
                     --tableSize;
                     return 1;
                 }
@@ -366,7 +372,7 @@ public:
 
             while (bucket != nullptr) {
                 for (size_type j{0}; j < N; ++j) {
-                    bucket->elements[j].used ? o << bucket->elements[j].element : o << "-";
+                    bucket->keys[j] != nullptr ? o << *(bucket->keys[j]) : o << "-";
                     o << " ";
                 }
 
@@ -407,7 +413,7 @@ private:
 
         if (position_) {
             for (size_t i = index_; i < N; ++i) {
-                if (position_->elements[i].used) {
+                if (position_->keys[i] != nullptr) {
                     index_ = i;
                     return;
                 }
@@ -455,13 +461,13 @@ public:
             throw std::runtime_error("Access beyond iterator");
         }
 
-        const value_type *value = &position_->elements[index_].element;
+        const value_type* value = position_->keys[index_];
 
         return *value;
     };
     pointer operator->() const
     {
-        const value_type *val = &position_->elements[index_].element;
+        const value_type* val = position_->keys[index_];
         return val;
     };
 
