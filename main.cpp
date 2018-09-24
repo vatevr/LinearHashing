@@ -523,6 +523,7 @@ void test_range_constructor3(size_t n, size_t max_value, RNG& gen) {
     a.insert(vs.begin(), vs.end());
     r.insert(vs.begin(), vs.end());
 
+    a.dump(std::cout);
     sanity_check("range_constructor3", a, r);
 }
 
@@ -1362,7 +1363,7 @@ void stresstest(RNG* const gen = nullptr) {
 #define T 1
 #endif
 
-int main(int argc, char** argv) {
+int btest_main(int argc, char** argv) {
     size_t n = N;
     size_t m = M;
     size_t o = O;
@@ -1478,4 +1479,37 @@ int main(int argc, char** argv) {
     }
 
     std::cout << GREEN("\nOK\n");
+    return 0;
 }
+
+void do_the_thing(size_t n) {
+    std::vector<size_t> vs(n);
+    std::iota(vs.begin(), vs.end(), 0);
+    ADS_set<size_t> a;
+
+    double elapsed_insert;
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+        for(auto const& v: vs) {
+            if(!a.insert(v).second) {
+                std::cerr << "oops\n";
+                std::abort();
+            }
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+
+        elapsed_insert = std::chrono::duration<double, std::milli>(end - start).count();
+        std::cerr << "elapsed_insert (n = " << n << ") = " << elapsed_insert << " ms\n";
+    }
+    return;
+}
+
+int main(int argc, char** argv) {
+//    btest_main(argc, argv);
+    do_the_thing(1000);
+    do_the_thing(10000);
+    do_the_thing(100000);
+
+    return 0;
+}
+
