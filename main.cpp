@@ -1506,10 +1506,8 @@ void do_the_thing(size_t n) {
 
 int main(int argc, char** argv) {
 //    btest_main(argc, argv);
-    do_the_thing(1000);
-    do_the_thing(10000);
-    do_the_thing(100000);
 
+    do_the_thing(100000);
     return 0;
 }
 

@@ -42,7 +42,7 @@ private:
     friend class PrivateBucketIterator;
     class PrivateBucketIterator {
     private:
-        Bucket* _table;
+        Bucket** _table;
         size_t _index;
         size_t _size;
     public:
@@ -51,7 +51,7 @@ private:
         using pointer = value_type *;
         using iterator_category = std::forward_iterator_tag;
 
-        PrivateBucketIterator(Bucket* hashTable, size_t index, size_t size)
+        PrivateBucketIterator(Bucket** hashTable, size_t index, size_t size)
                 : _table{hashTable}, _index{index}, _size{size}
         {}
 
@@ -64,7 +64,7 @@ private:
             if(_index == SIZE_INVALID)
                 throw std::runtime_error("Table array exceeded");
 
-            Bucket* bucket = &_table[_index];
+            Bucket* bucket = _table[_index];
 
             return *bucket;
         };
@@ -74,7 +74,7 @@ private:
             if(_index == SIZE_INVALID)
                 throw std::runtime_error("Table array exceeded");
 
-            return &_table[_index];
+            return _table[_index];
         };
 
         PrivateBucketIterator& operator++()
@@ -107,44 +107,37 @@ private:
         };
     };
 
-    Bucket* table_{nullptr};
+    Bucket** table_{nullptr};
     size_t tableSize_;
     size_t size_{0};
     size_t d_{2};
     size_t nextToSplit_{0};
-    float maxLoadFactor_{0.7};
+    float maxLoadFactor_{0.9};
 
     using bucketIterator = PrivateBucketIterator;
 
-        void split() {
-        Bucket* tmp = new Bucket[tableSize_ + 1];
-        for (size_t i = 0; i < tableSize_; ++i) {
-            std::swap(tmp[i].keys, table_[i].keys);
-            std::swap(tmp[i].nextFreeIndex, table_[i].nextFreeIndex);
-            std::swap(tmp[i].overflowBucket, table_[i].overflowBucket);
+    void split() {
+        if (0 == nextToSplit_) {
+            Bucket** tmp = new Bucket*[tableSize_ * 2];
+            for (size_t i = 0; i < tableSize_; ++i) {
+                tmp[i] = table_[i];
+            }
+            delete[] table_;
+            table_ = tmp;
         }
-        delete[] table_;
-        table_ = tmp;
-        ++tableSize_;
+        table_[tableSize_++] = new Bucket();
     }
 
     void reserve(size_t n) {
         // instead of capacity we tweak buckets in main directory
         if (n / float(N * tableSize_) > maxLoadFactor_) {
-//            std::cout << "======pre-rehash=====" << std::endl;
-//            this->dump(std::cout);
-//            std::cout << "======rehashing=====" << std::endl;
             split();
             rehash(nextToSplit_++);
-//            this->dump(std::cout);
-//            std::cout << "======rehashed=====" << std::endl;
             // Splitting is through
             if (1 << d_ == nextToSplit_) {
                 ++d_;
                 nextToSplit_ = 0;
             }
-
-
         }
     }
 
@@ -158,10 +151,10 @@ private:
     }
 
     void rehash(size_t index) {
-        Bucket* bucket = &table_[index];
+        Bucket* bucket = table_[index];
 
         size_t address = index + (1 << d_);
-        Bucket* splittedBucketToStore = &table_[address];
+        Bucket* splittedBucketToStore = table_[address];
 
         while (bucket) {
             for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
@@ -190,7 +183,7 @@ private:
 
     iterator insertUnchecked(const key_type &key) {
         size_type address = bucketAddress(key);
-        Bucket* bucket = &table_[address];
+        Bucket* bucket = table_[address];
 
         while(bucket->nextFreeIndex > N - 1) {
             if (nullptr == bucket->overflowBucket) {
@@ -207,10 +200,16 @@ private:
 
     }
 
+    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table_, index, tableSize_); }
+    bucketIterator bucketEnd() const { return bucketIterator(this->table_, SIZE_INVALID, tableSize_); }
+
 public:
     ADS_set() {
         tableSize_ = (size_t)(1<<d_);
-        table_ = new Bucket[tableSize_];
+        table_ = new Bucket*[tableSize_];
+        for (size_t i = 0; i < tableSize_; ++i) {
+            table_[i] = new Bucket();
+        }
     }
 
     ADS_set(std::initializer_list<key_type> ilist): ADS_set{} {
@@ -225,6 +224,10 @@ public:
     }
 
     ~ADS_set() {
+        for (size_t i = 0; i < tableSize_; ++i) {
+            delete table_[i];
+        }
+
         delete[] table_;
     }
 
@@ -253,7 +256,7 @@ public:
 
         size_type index = bucketAddress(key);
 
-        Bucket* bucket = &table_[index];
+        Bucket* bucket = table_[index];
 
         while (bucket) {
             for (size_type i{0}; i < bucket->nextFreeIndex; ++i) {
@@ -270,7 +273,7 @@ public:
 
     iterator find(const key_type& key) const {
         size_t index = bucketAddress(key);
-        Bucket* bucket = &table_[index];
+        Bucket* bucket = table_[index];
         while (bucket) {
             for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
                 if (key_equal{}(key, bucket->keys[i])) {
@@ -301,10 +304,6 @@ public:
     void insert(std::initializer_list<key_type> ilist) {
         for (const auto &key: ilist) {
             if (count(key) == 0) {
-
-//                std::cout<<"======adding========"<<std::endl;
-//                dump(std::cout);
-//                std::cout<<"======added========"<<key<<std::endl;
                 reserve(size_ + 1);
                 insertUnchecked(key);
             }
@@ -333,7 +332,7 @@ public:
 
     size_type erase(const key_type &key) {
         size_t index = bucketAddress(key);
-        Bucket* bucket = &table_[index];
+        Bucket* bucket = table_[index];
 
         while (bucket) {
             for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
@@ -354,12 +353,10 @@ public:
         return 0;
     }
 
-    bucketIterator bucketBegin(size_t index) const { return bucketIterator(this->table_, index, tableSize_); }
-    bucketIterator bucketEnd() const { return bucketIterator(this->table_, SIZE_INVALID, tableSize_); }
     const_iterator begin() const {
-        iterator a{bucketBegin(0), bucketEnd(), table_, 0};
+        iterator a{bucketBegin(0), bucketEnd(), table_[0], 0};
 
-        if (table_[0].nextFreeIndex == 0) {
+        if (table_[0]->nextFreeIndex == 0) {
             a.advanceToNext();
         }
 
@@ -369,7 +366,7 @@ public:
 
     void dump(std::ostream &o = std::cerr) const {
         for (size_t i = 0; i < tableSize_; ++i) {
-            Bucket* bucket = &table_[i];
+            Bucket* bucket = table_[i];
 
             while (bucket) {
                 for (size_type j{0}; j < N; ++j) {
