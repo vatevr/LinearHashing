@@ -25,17 +25,13 @@ public:
     static const size_t SIZE_INVALID = (size_t) -1;
 private:
     struct Bucket {
-        // to have keys initialized to nullptrs
-        Key* keys[N] = {};
+        Key keys[N];
+        size_t nextFreeIndex{0};
         Bucket* overflowBucket{nullptr};
 
         Bucket() {}
 
         ~Bucket() {
-            for(size_t i = 0; i < N; ++i) {
-                delete keys[i];
-            }
-
             if (nullptr != overflowBucket) {
                 delete overflowBucket;
                 overflowBucket = nullptr;
@@ -114,34 +110,41 @@ private:
     Bucket* table_{nullptr};
     size_t tableSize_;
     size_t size_{0};
-    size_t capacity_{0};
     size_t d_{2};
     size_t nextToSplit_{0};
-    float maxLoadFactor_{0.9 };
+    float maxLoadFactor_{0.7};
 
     using bucketIterator = PrivateBucketIterator;
 
-    void split() {
+        void split() {
         Bucket* tmp = new Bucket[tableSize_ + 1];
         for (size_t i = 0; i < tableSize_; ++i) {
             std::swap(tmp[i].keys, table_[i].keys);
+            std::swap(tmp[i].nextFreeIndex, table_[i].nextFreeIndex);
             std::swap(tmp[i].overflowBucket, table_[i].overflowBucket);
         }
         delete[] table_;
         table_ = tmp;
         ++tableSize_;
-        capacity_ += N;
     }
 
     void reserve(size_t n) {
-        if (n > capacity_ * maxLoadFactor_) {
+        // instead of capacity we tweak buckets in main directory
+        if (n / float(N * tableSize_) > maxLoadFactor_) {
+//            std::cout << "======pre-rehash=====" << std::endl;
+//            this->dump(std::cout);
+//            std::cout << "======rehashing=====" << std::endl;
             split();
             rehash(nextToSplit_++);
+//            this->dump(std::cout);
+//            std::cout << "======rehashed=====" << std::endl;
             // Splitting is through
             if (1 << d_ == nextToSplit_) {
                 ++d_;
                 nextToSplit_ = 0;
             }
+
+
         }
     }
 
@@ -159,45 +162,29 @@ private:
 
         size_t address = index + (1 << d_);
         Bucket* splittedBucketToStore = &table_[address];
-        size_t splittedBucketIndex = 0;
-        Bucket* currentBucketToStore = &table_[index];
-        size_t currentBucketIndex = 0;
 
         while (bucket) {
-            for (size_t i = 0; i < N; ++i) {
-                if (nullptr == bucket->keys[i]){
-                    continue;
-                }
-                if (bucketAddress(*(bucket->keys[i])) == index) {
-                    if (currentBucketIndex == N) {
-                        currentBucketIndex = 0;
-                        currentBucketToStore = currentBucketToStore->overflowBucket;
-                    }
-
-                    std::swap(bucket->keys[i], currentBucketToStore->keys[currentBucketIndex++]);
-                } else {
-                    if (splittedBucketIndex == N) {
-                        splittedBucketIndex = 0;
+            for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
+                if (bucketAddress(bucket->keys[i]) != index) {
+                    if (splittedBucketToStore->nextFreeIndex == N) {
                         splittedBucketToStore->overflowBucket = new Bucket();
                         splittedBucketToStore = splittedBucketToStore->overflowBucket;
-                        capacity_ += N;
                     }
-                    std::swap(bucket->keys[i], splittedBucketToStore->keys[splittedBucketIndex++]);
+
+                    splittedBucketToStore->keys[splittedBucketToStore->nextFreeIndex] = bucket->keys[i];
+                    ++splittedBucketToStore->nextFreeIndex;
+
+                    // restores
+                    for(size_t j = i + 1; j < bucket->nextFreeIndex; ++j) {
+                        bucket->keys[j - 1] = bucket->keys[j];
+                    }
+                    --bucket->nextFreeIndex;
+                    // Recalculate again since moved back
+                    --i;
                 }
             }
 
             bucket = bucket->overflowBucket;
-        }
-        if (currentBucketToStore->overflowBucket != nullptr) {
-            size_t count{0};
-            Bucket* t = currentBucketToStore->overflowBucket;
-            while(t != nullptr) {
-                ++count;
-                t = t->overflowBucket;
-            }
-            delete currentBucketToStore->overflowBucket;
-            currentBucketToStore->overflowBucket = nullptr;
-            capacity_ = capacity_ - (count * N);
         }
     }
 
@@ -205,34 +192,25 @@ private:
         size_type address = bucketAddress(key);
         Bucket* bucket = &table_[address];
 
-        while(bucket) {
-            for (size_t i = 0; i < N; ++i) {
-                // Should at some point reach here
-                if (bucket->keys[i] == nullptr) {
-                    bucket->keys[i] = new key_type(key);
-                    ++size_;
-                    return iterator{bucketBegin(address), bucketEnd(), bucket, i};
-                }
-
-                if (i == N - 1) {
-                    if (!bucket->overflowBucket) {
-                        bucket->overflowBucket = new Bucket();
-                        capacity_ += N;
-                    }
-
-                    bucket = bucket->overflowBucket;
-                }
+        while(bucket->nextFreeIndex > N - 1) {
+            if (nullptr == bucket->overflowBucket) {
+                bucket->overflowBucket = new Bucket();
             }
+            bucket = bucket->overflowBucket;
         }
 
-        return end();
+        size_t savedAtIndex = bucket->nextFreeIndex;
+        bucket->keys[savedAtIndex] = key;
+        ++size_;
+        ++bucket->nextFreeIndex;
+        return iterator{bucketBegin(address), bucketEnd(), bucket, savedAtIndex};
+
     }
 
 public:
     ADS_set() {
         tableSize_ = (size_t)(1<<d_);
         table_ = new Bucket[tableSize_];
-        capacity_ += tableSize_ * N;
     }
 
     ADS_set(std::initializer_list<key_type> ilist): ADS_set{} {
@@ -278,11 +256,9 @@ public:
         Bucket* bucket = &table_[index];
 
         while (bucket) {
-            for (size_type i{0}; i < N; ++i) {
-                if (bucket->keys[i] != nullptr) {
-                    if (key_equal{}(key, *(bucket->keys[i]))) {
-                        return 1;
-                    }
+            for (size_type i{0}; i < bucket->nextFreeIndex; ++i) {
+                if (key_equal{}(key, bucket->keys[i])) {
+                    return 1;
                 }
             }
 
@@ -296,8 +272,8 @@ public:
         size_t index = bucketAddress(key);
         Bucket* bucket = &table_[index];
         while (bucket) {
-            for (size_t i = 0; i < N; ++i) {
-                if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
+            for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
+                if (key_equal{}(key, bucket->keys[i])) {
                     return iterator{bucketBegin(index), bucketEnd(), bucket, i};
                 }
             }
@@ -319,13 +295,16 @@ public:
         std::swap(nextToSplit_, other.nextToSplit_);
         std::swap(size_, other.size_);
         std::swap(tableSize_, other.tableSize_);
-        std::swap(capacity_, other.capacity_);
         std::swap(maxLoadFactor_, other.maxLoadFactor_);
     }
 
     void insert(std::initializer_list<key_type> ilist) {
         for (const auto &key: ilist) {
             if (count(key) == 0) {
+
+//                std::cout<<"======adding========"<<std::endl;
+//                dump(std::cout);
+//                std::cout<<"======added========"<<key<<std::endl;
                 reserve(size_ + 1);
                 insertUnchecked(key);
             }
@@ -357,10 +336,13 @@ public:
         Bucket* bucket = &table_[index];
 
         while (bucket) {
-            for (size_t i = 0; i < N; ++i) {
-                if (bucket->keys[i] != nullptr && key_equal{}(key, *(bucket->keys[i]))) {
-                    delete bucket->keys[i];
-                    bucket->keys[i] = nullptr;
+            for (size_t i = 0; i < bucket->nextFreeIndex; ++i) {
+                if (key_equal{}(key, bucket->keys[i])) {
+                    // Move array forward
+                    --bucket->nextFreeIndex;
+                    for (size_t j = i; j < bucket->nextFreeIndex; ++j) {
+                        bucket->keys[j] = bucket->keys[j + 1];
+                    }
                     --size_;
                     return 1;
                 }
@@ -377,7 +359,7 @@ public:
     const_iterator begin() const {
         iterator a{bucketBegin(0), bucketEnd(), table_, 0};
 
-        if (table_[0].keys[0] == nullptr) {
+        if (table_[0].nextFreeIndex == 0) {
             a.advanceToNext();
         }
 
@@ -389,9 +371,9 @@ public:
         for (size_t i = 0; i < tableSize_; ++i) {
             Bucket* bucket = &table_[i];
 
-            while (bucket != nullptr) {
+            while (bucket) {
                 for (size_type j{0}; j < N; ++j) {
-                    bucket->keys[j] != nullptr ? o << *(bucket->keys[j]) : o << "-";
+                    j < bucket->nextFreeIndex ? o << bucket->keys[j] : o << "-";
                     o << " ";
                 }
 
@@ -426,21 +408,17 @@ private:
 
 public:
     void advanceToNext() {
-        for (size_t i = index_ + 1; i < N; ++i) {
-            if (position_->keys[i] != nullptr) {
-                index_ = i;
-                return;
-            }
+        for (size_t i = index_ + 1; i < position_->nextFreeIndex; ++i) {
+            index_ = i;
+            return;
         }
 
         position_ = position_->overflowBucket;
         while (position_) {
             index_ = 0;
-            for (size_t i = index_; i < N; ++i) {
-                if (position_->keys[i] != nullptr) {
-                    index_ = i;
-                    return;
-                }
+            for (size_t i = index_; i < position_->nextFreeIndex; ++i) {
+                index_ = i;
+                return;
             }
             position_ = position_->overflowBucket;
         }
@@ -449,11 +427,9 @@ public:
             position_ = &(*beginIterator_);
             while (position_) {
                 index_ = 0;
-                for (size_t i = index_; i < N; ++i) {
-                    if (position_->keys[i] != nullptr) {
-                        index_ = i;
-                        return;
-                    }
+                for (size_t i = index_; i < position_->nextFreeIndex; ++i) {
+                    index_ = i;
+                    return;
                 }
                 position_ = position_->overflowBucket;
             }
@@ -494,13 +470,13 @@ public:
             throw std::runtime_error("Access beyond iterator");
         }
 
-        const value_type* value = position_->keys[index_];
+        const value_type* value = &position_->keys[index_];
 
         return *value;
     };
     pointer operator->() const
     {
-        const value_type* val = position_->keys[index_];
+        const value_type* val = &position_->keys[index_];
         return val;
     };
 
